@@ -18,9 +18,26 @@ pub struct ImapSource {
 
 impl ImapSource {
     pub fn connect(host: &str, port: u16, user: &str, password: &str) -> Result<Self> {
-        let tls = native_tls::TlsConnector::builder().build()?;
-        let client = imap::connect((host, port), host, &tls)
+        use std::net::ToSocketAddrs;
+        use std::time::Duration;
+        let addr = (host, port)
+            .to_socket_addrs()
+            .with_context(|| format!("cannot resolve {host}"))?
+            .next()
+            .with_context(|| format!("no address for {host}"))?;
+        // Timeouts everywhere: a hung server must fail a sync, never wedge it.
+        let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(20))
             .with_context(|| format!("cannot reach {host}:{port}"))?;
+        stream.set_read_timeout(Some(Duration::from_secs(120)))?;
+        stream.set_write_timeout(Some(Duration::from_secs(120)))?;
+        let tls = native_tls::TlsConnector::builder().build()?;
+        let tls_stream = tls
+            .connect(host, stream)
+            .with_context(|| format!("TLS handshake with {host} failed"))?;
+        let mut client = imap::Client::new(tls_stream);
+        client
+            .read_greeting()
+            .with_context(|| format!("{host} did not send an IMAP greeting"))?;
         let session = client
             .login(user, password)
             .map_err(|(e, _)| anyhow::anyhow!("login failed: {e}"))?;

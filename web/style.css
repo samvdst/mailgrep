@@ -202,6 +202,7 @@ code { font-family: var(--mono); background: var(--chip); padding: 1px 4px; bord
 
 /* ---------- detail ---------- */
 
+#detail[hidden] { display: none; }
 #detail {
   border-left: 1px solid var(--border);
   background: var(--panel);

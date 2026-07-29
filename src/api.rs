@@ -273,51 +273,63 @@ async fn trigger_sync(
     Ok(Json(json!({ "started": true })))
 }
 
-/// Spawn a sync for an account unless one is already running.
+/// Spawn a sync for an account unless one is already running. The running
+/// flag is claimed atomically and ALWAYS released when the task ends —
+/// including on panic — so a failed sync can never wedge future syncs.
 pub async fn start_sync(app: SharedApp, account_id: i64, max_per_folder: Option<usize>) -> Result<()> {
+    let account = app.store.account(account_id).await?;
     {
-        let progress = app.progress.lock().unwrap();
+        let mut progress = app.progress.lock().unwrap();
         if progress.get(&account_id).map(|p| p.running).unwrap_or(false) {
             anyhow::bail!("sync already running");
         }
+        progress.insert(
+            account_id,
+            crate::sync::SyncProgress {
+                running: true,
+                ..Default::default()
+            },
+        );
     }
-    let account = app.store.account(account_id).await?;
-    let mut source = make_source(&account, &app.crypto)?;
     let handle = tokio::runtime::Handle::current();
     let app2 = app.clone();
-    // mark running immediately so double-triggers are rejected
-    app.progress.lock().unwrap().insert(
-        account_id,
-        crate::sync::SyncProgress {
-            running: true,
-            ..Default::default()
-        },
-    );
-    tokio::task::spawn_blocking(move || {
-        let res = crate::sync::run_sync(
-            handle.clone(),
-            &app2.store,
-            &app2.indexes,
-            source.as_mut(),
-            account_id,
-            &account.excluded_folders,
-            max_per_folder,
-            &app2.progress,
-        );
-        if let Err(e) = &res {
-            tracing::error!(account_id, "sync failed: {e:#}");
-            let mut p = app2
-                .progress
-                .lock()
-                .unwrap()
-                .get(&account_id)
-                .cloned()
-                .unwrap_or_default();
-            p.running = false;
-            p.error = Some(format!("{e:#}"));
-            app2.progress.lock().unwrap().insert(account_id, p);
-            handle
-                .block_on(app2.store.set_sync_result(account_id, &format!("error: {e:#}")))
+    tokio::spawn(async move {
+        let app3 = app2.clone();
+        // connect happens inside the blocking task: it is network I/O and
+        // must not stall the async runtime
+        let joined = tokio::task::spawn_blocking(move || -> Result<()> {
+            let mut source = make_source(&account, &app3.crypto)?;
+            crate::sync::run_sync(
+                handle,
+                &app3.store,
+                &app3.indexes,
+                source.as_mut(),
+                account_id,
+                &account.excluded_folders,
+                max_per_folder,
+                &app3.progress,
+            )?;
+            Ok(())
+        })
+        .await;
+        let err_msg = match joined {
+            Ok(Ok(())) => None,
+            Ok(Err(e)) => Some(format!("{e:#}")),
+            Err(e) => Some(format!("sync task died: {e}")),
+        };
+        {
+            let mut progress = app2.progress.lock().unwrap();
+            let entry = progress.entry(account_id).or_default();
+            entry.running = false;
+            if let Some(m) = &err_msg {
+                entry.error = Some(m.clone());
+            }
+        }
+        if let Some(m) = err_msg {
+            tracing::error!(account_id, "sync failed: {m}");
+            app2.store
+                .set_sync_result(account_id, &format!("error: {m}"))
+                .await
                 .ok();
         }
     });
