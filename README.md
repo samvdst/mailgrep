@@ -36,3 +36,15 @@ filename:`; `"quoted phrases"` are exact, `-` negates, commas are OR
 (`ext:pdf,jpg`), dates are `2021`, `2021-05`, `2021-05-03` or `2021..2023`.
 
 No auth — bind it to the tailnet only (DESIGN.md §13).
+
+## Deployment on olympus (current)
+
+Runs rootless via podman-static (`~/.local/podman`) as a systemd user service
+(`deploy/mailgrep.service`, installed at `~/.config/systemd/user/`), with
+linger enabled so it survives reboots. Encryption key in `~/.config/mailgrep.env`.
+UI: http://olympus.redacted.ts.net:8025
+
+```sh
+systemctl --user {status,restart} mailgrep    # manage
+podman logs -f mailgrep                        # logs
+```
