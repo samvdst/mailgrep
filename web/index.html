@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mailgrep</title>
+<link rel="stylesheet" href="style.css">
+<script src="bundle.js" defer></script>
+</head>
+<body>
+
+<header id="topbar">
+  <span class="brand">mailgrep</span>
+  <div class="searchwrap">
+    <input id="q" type="search" placeholder="search the archive  —  press /" autocomplete="off" spellcheck="false">
+    <div id="qerror" hidden></div>
+  </div>
+  <select id="acctsel" title="account"></select>
+  <button id="sortbtn" title="toggle sort order">relevance &#8645;</button>
+  <button id="gearbtn" title="settings" aria-label="settings">&#9881;</button>
+</header>
+
+<main id="layout">
+  <aside id="facets"></aside>
+  <section id="results">
+    <div id="meta" hidden></div>
+    <div id="rows"></div>
+    <button id="more" hidden>Load more</button>
+  </section>
+  <section id="detail" hidden></section>
+</main>
+
+<aside id="settings" hidden>
+  <div class="s-head">
+    <h2>Settings</h2>
+    <button id="s-close" title="close" aria-label="close settings">&times;</button>
+  </div>
+  <div id="s-err" class="err" hidden></div>
+
+  <section>
+    <h3>Accounts</h3>
+    <div id="acctlist"></div>
+  </section>
+
+  <section>
+    <h3>Add account</h3>
+    <form id="addimap" autocomplete="off">
+      <input name="name" placeholder="name" required>
+      <input name="host" placeholder="imap host" required>
+      <input name="port" type="number" value="993" min="1" max="65535" title="port">
+      <input name="username" placeholder="username" required>
+      <input name="password" type="password" placeholder="password" required>
+      <button type="submit">Add IMAP account</button>
+    </form>
+    <details class="fixture">
+      <summary>add fixture account (testing)</summary>
+      <form id="addfixture" autocomplete="off">
+        <input name="name" placeholder="name" required>
+        <input name="fixture_dir" placeholder="fixture dir" required>
+        <button type="submit">Add fixture account</button>
+      </form>
+    </details>
+    <div id="adderr" class="err" hidden></div>
+  </section>
+
+  <section>
+    <h3>Contacts</h3>
+    <div class="c-controls">
+      <select id="c-acct" title="contacts account"></select>
+      <input id="c-q" placeholder="filter contacts" autocomplete="off">
+      <button id="c-merge" hidden>Merge</button>
+    </div>
+    <div id="contactlist"></div>
+    <h4>Merges</h4>
+    <div id="mergelist" class="dim">none</div>
+  </section>
+</aside>
+
+</body>
+</html>

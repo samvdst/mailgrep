@@ -1,0 +1,12 @@
+{
+  "name": "mailgrep-web",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/app.ts --bundle --minify --format=iife --outfile=dist/bundle.js && cp index.html style.css dist/"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.6.0"
+  }
+}
