@@ -7,16 +7,20 @@ COPY web/ ./
 RUN npm run build
 
 # ---- rust build ----
+# rust:bookworm (buildpack-deps) already carries pkg-config, OpenSSL headers
+# and CA certs — no apt needed, which also keeps rootless builds happy.
 FROM rust:1.97-bookworm AS build
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --release
 
 # ---- runtime ----
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+# OpenSSL runtime + CA bundle lifted from the (same-release) build image.
+COPY --from=build /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/
+COPY --from=build /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/
+COPY --from=build /etc/ssl/certs /etc/ssl/certs
 WORKDIR /app
 COPY --from=build /app/target/release/mailgrep /usr/local/bin/mailgrep
 COPY --from=web /app/web/dist /app/web/dist
