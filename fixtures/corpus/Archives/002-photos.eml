@@ -1,0 +1,20 @@
+Message-ID: <fotos-9@gmail.com>
+Received: from mail-wr1.google.com by mail.demo.example with ESMTP; Sun, 8 Aug 2021 20:00:00 +0200
+Date: Sun, 8 Aug 2021 19:58:00 +0200
+From: Anna Beispiel <anna.beispiel@gmail.com>
+To: sam@demo.example
+Subject: Fotos vom Wochenende
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="P1"
+
+--P1
+Content-Type: text/plain; charset=utf-8
+
+Hoi Sam, hier die versprochenen Fotos vom Wanderwochenende!
+--P1
+Content-Type: image/jpeg; name="wanderung.jpg"
+Content-Disposition: attachment; filename="wanderung.jpg"
+Content-Transfer-Encoding: base64
+
+/9j/4AAQSkZJRg==
+--P1--

@@ -1,0 +1,26 @@
+Message-ID: <boiler-1@immo.ch>
+Received: from mx1.immo.ch (mx1.immo.ch [10.0.0.1]) by mail.demo.example with ESMTP; Wed, 10 Mar 2021 09:15:00 +0100
+Date: Wed, 10 Mar 2021 09:14:30 +0100
+From: Hans Muster <hans@immo.ch>
+To: Sam <sam@demo.example>
+Subject: Rechnung Boiler
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="B1"
+
+--B1
+Content-Type: text/plain; charset=utf-8
+
+Guten Tag Sam
+
+Die Rechnung fuer den Boiler ist angehaengt.
+Der Klempner kommt am Dienstag vorbei.
+
+Freundliche Gruesse
+Hans
+--B1
+Content-Type: application/octet-stream; name="Rechnung-Boiler.pdf"
+Content-Disposition: attachment; filename="Rechnung-Boiler.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKJSBmYWtlIHBkZiBmb3IgdGVzdHM=
+--B1--

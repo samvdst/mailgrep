@@ -1,0 +1,15 @@
+Message-ID: <boiler-2@demo.example>
+Received: from webmail.demo.example by mail.demo.example with ESMTP; Thu, 11 Mar 2021 18:02:00 +0100
+Date: Thu, 11 Mar 2021 18:01:40 +0100
+From: Sam <sam@demo.example>
+To: Hans Muster <hans@immo.ch>
+Subject: AW: Rechnung Boiler
+In-Reply-To: <boiler-1@immo.ch>
+References: <boiler-1@immo.ch>
+Content-Type: text/plain; charset=utf-8
+
+Danke fuer die Rechnung, ich zahle diese Woche.
+
+Am 10.03.2021 um 09:14 schrieb Hans Muster:
+> Die Rechnung fuer den Boiler ist angehaengt.
+> Der Klempner kommt am Dienstag vorbei.

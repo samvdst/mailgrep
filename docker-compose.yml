@@ -1,0 +1,17 @@
+services:
+  mailgrep:
+    build: .
+    image: mailgrep:latest
+    container_name: mailgrep
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+    environment:
+      # 64 hex chars; encrypts IMAP credentials at rest. Generate with:
+      #   openssl rand -hex 32
+      MAILGREP_KEY: "${MAILGREP_KEY:?set MAILGREP_KEY in .env}"
+    volumes:
+      - mailgrep-data:/data
+
+volumes:
+  mailgrep-data:

@@ -1,0 +1,12 @@
+Message-ID: <boiler-3@immo.ch>
+Received: from mx1.immo.ch by mail.demo.example with ESMTP; Fri, 12 Mar 2021 10:30:00 +0100
+Date: Fri, 12 Mar 2021 10:29:00 +0100
+From: Hans Muster <hans@immo.ch>
+To: Sam <sam@demo.example>
+Subject: Re: AW: Rechnung Boiler
+In-Reply-To: <boiler-2@demo.example>
+References: <boiler-1@immo.ch> <boiler-2@demo.example>
+Content-Type: text/html; charset=utf-8
+
+<div>Alles klar, besten Dank. Der Handwerker bestaetigt den Termin.</div>
+<blockquote type="cite"><div>Danke fuer die Rechnung, ich zahle diese Woche.</div></blockquote>
