@@ -4,6 +4,20 @@ use crate::types::*;
 use mail_parser::{HeaderValue, MessageParser, MimeHeaders};
 use sha2::{Digest, Sha256};
 
+/// normalize(), but a panic on one adversarial message becomes an Err the
+/// sync loop can record and skip (SPEC story 15: one malformed message must
+/// never abort the run).
+pub fn normalize_catch(raw: &RawMessage, now: i64) -> anyhow::Result<NormalizedMessage> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| normalize(raw, now))).map_err(|p| {
+        let msg = p
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| p.downcast_ref::<&str>().map(|s| s.to_string()))
+            .unwrap_or_else(|| "unknown panic".into());
+        anyhow::anyhow!("normalise panicked: {msg}")
+    })
+}
+
 pub fn normalize(raw: &RawMessage, now: i64) -> NormalizedMessage {
     let parser = MessageParser::default();
     // Parse the header block as a message (no body needed).
@@ -458,7 +472,9 @@ pub fn html_to_text_quote_aware(html: &str) -> String {
         }
         if c == '&' {
             let rest = &bytes[i..];
-            if let Some(semi) = rest[..rest.len().min(10)].find(';') {
+            // ';' is ASCII, so its index is always a char boundary; only a
+            // nearby one counts as an entity
+            if let Some(semi) = rest.find(';').filter(|s| *s <= 10) {
                 let ent = &rest[1..semi];
                 let decoded = match ent {
                     "amp" => Some('&'),
@@ -622,6 +638,15 @@ mod tests {
         let text = "hi\n-----Original Message-----\nvery old\n";
         let spans = segment(text);
         assert!(spans.iter().filter(|s| s.quoted).map(|s| &text[s.start..s.end]).any(|q| q.contains("very old")));
+    }
+
+    #[test]
+    fn html_entities_near_multibyte_chars_dont_panic() {
+        // '&' followed by umlauts such that a naive 10-byte cut lands
+        // mid-character (the 2026-07-30 sync panic)
+        let text = html_to_text_quote_aware("<p>&szlig\u{fc}\u{fc} b&auml;r &amp; caf\u{e9}</p>");
+        assert!(text.contains("caf\u{e9}"), "content lost: {text}");
+        assert!(text.contains("\u{fc}\u{fc}"), "umlauts lost: {text}");
     }
 
     #[test]

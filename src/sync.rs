@@ -140,7 +140,22 @@ pub fn run_sync(
                 }
             };
             for (uid, raw) in fetched {
-                let n = crate::normalize::normalize(&raw, now);
+                let n = match crate::normalize::normalize_catch(&raw, now) {
+                    Ok(n) => n,
+                    Err(e) => {
+                        handle.block_on(store.record_failure(
+                            account_id,
+                            folder,
+                            Some(uid),
+                            &e.to_string(),
+                            Some(&raw.header_bytes),
+                        ))?;
+                        outcome.failed += 1;
+                        prog.failed += 1;
+                        prog.processed += 1;
+                        continue;
+                    }
+                };
                 let loc = StoredLocation {
                     folder: folder.clone(),
                     uid,
@@ -231,7 +246,13 @@ pub async fn rebuild_account(store: &Store, indexes: &Indexes, account_id: i64) 
     let count = ids.len();
     for id in &ids {
         let raw = store.raw_message(*id).await?;
-        let n = crate::normalize::normalize(&raw, now);
+        let n = match crate::normalize::normalize_catch(&raw, now) {
+            Ok(n) => n,
+            Err(e) => {
+                tracing::warn!(id, "rebuild: {e:#}, keeping previous derived data");
+                continue;
+            }
+        };
         store.update_derived(*id, &n).await?;
         store.touch_contacts(account_id, &n).await?;
     }
