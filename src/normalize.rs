@@ -226,10 +226,8 @@ fn strip_comments(s: &str) -> String {
 
 // ---------- dates ----------
 
-const MIN_PLAUSIBLE: i64 = 631152000; // 1990-01-01
-
 fn plausible(ts: i64, now: i64) -> bool {
-    ts >= MIN_PLAUSIBLE && ts <= now + 86400
+    ts >= crate::config::cfg().date_floor && ts <= now + 86400
 }
 
 /// Corroboration voting: three witnesses, and when two agree (within 48h)
@@ -245,11 +243,11 @@ pub fn derive_date(
     offset_mins: i32,
     now: i64,
 ) -> DateDerived {
-    const AGREE: i64 = 48 * 3600;
+    let agree_window = crate::config::cfg().date_agree_secs;
     let r = received_top.filter(|t| plausible(*t, now));
     let d = date_hdr.filter(|t| plausible(*t, now));
     let i = internaldate.filter(|t| plausible(*t, now));
-    let agree = |a: Option<i64>, b: Option<i64>| matches!((a, b), (Some(x), Some(y)) if (x - y).abs() <= AGREE);
+    let agree = |a: Option<i64>, b: Option<i64>| matches!((a, b), (Some(x), Some(y)) if (x - y).abs() <= agree_window);
 
     let (canonical, source) = if agree(r, d) || agree(r, i) {
         (r.unwrap(), DateSource::Received)
@@ -269,7 +267,7 @@ pub fn derive_date(
         )
     };
     let skew = internaldate
-        .map(|i| (i - canonical).abs() > 86400)
+        .map(|i| (i - canonical).abs() > crate::config::cfg().skew_secs)
         .unwrap_or(false);
     DateDerived {
         canonical,
@@ -284,12 +282,20 @@ pub fn derive_date(
 
 // ---------- subject ----------
 
+// re/aw/wg (EN/DE), fwd variants, antw (NL), sv/vs (Nordic), tr (FR),
+// rv (ES), enc (PT), odp (PL), ynt (TR), r (IT)
+const SUBJECT_PREFIXES: &[&str] = &[
+    "re", "aw", "wg", "fw", "fwd", "antw", "sv", "vs", "tr", "rv", "enc", "odp", "ynt",
+    "doorst", "r", "i",
+];
+
 pub fn normalize_subject(s: &str) -> String {
     let mut cur = s.trim();
+    let extra = &crate::config::cfg().subject_prefix_extra;
     loop {
         let lower = cur.to_ascii_lowercase();
         let mut stripped = false;
-        for p in ["re", "aw", "wg", "fw", "fwd", "antw", "sv", "vs"] {
+        for p in SUBJECT_PREFIXES.iter().copied().chain(extra.iter().map(|s| s.as_str())) {
             if lower.starts_with(p) {
                 let rest = &cur[p.len()..];
                 // allow "Re:", "Re[2]:", "RE :"
@@ -374,13 +380,24 @@ fn is_sig_delim(line: &str) -> bool {
 
 fn is_original_marker(t: &str) -> bool {
     let l = t.to_ascii_lowercase();
-    l.starts_with("-----original message-----")
-        || l.starts_with("-----ursprüngliche nachricht-----")
-        || l.starts_with("-----message d'origine-----")
-        || l.starts_with("________________________________")
-        || l.starts_with("---------- forwarded message")
-        || l.starts_with("begin forwarded message")
-        || l.starts_with("anfang der weitergeleiteten nachricht")
+    const MARKERS: &[&str] = &[
+        "-----original message-----",
+        "-----ursprüngliche nachricht-----",
+        "-----message d'origine-----",
+        "-----mensaje original-----",
+        "-----messaggio originale-----",
+        "-----oorspronkelijk bericht-----",
+        "-----originalmeddelande-----",
+        "________________________________",
+        "---------- forwarded message",
+        "begin forwarded message",
+        "anfang der weitergeleiteten nachricht",
+    ];
+    MARKERS.iter().any(|m| l.starts_with(m))
+        || crate::config::cfg()
+            .quote_marker_extra
+            .iter()
+            .any(|m| l.starts_with(m.as_str()))
 }
 
 /// "On <date>, <person> wrote:" / "Am <date> schrieb <person>:" and common variants.
@@ -391,8 +408,11 @@ fn is_attribution(t: &str) -> bool {
     let l = t.to_ascii_lowercase();
     (l.starts_with("on ") && (l.ends_with("wrote:") || l.ends_with("wrote :")))
         || (l.starts_with("am ") && (l.ends_with("schrieb:") || l.contains(" schrieb ") && l.ends_with(':')))
-        || (l.starts_with("le ") && l.ends_with("a écrit :"))
-        || ((l.starts_with("von:") || l.starts_with("from:")) && l.contains('@'))
+        || (l.starts_with("le ") && (l.ends_with("a écrit :") || l.ends_with("a écrit:")))
+        || (l.starts_with("el ") && l.ends_with("escribió:"))
+        || (l.starts_with("il ") && l.ends_with("ha scritto:"))
+        || (l.starts_with("op ") && l.contains(" schreef ") && l.ends_with(':'))
+        || ((l.starts_with("von:") || l.starts_with("from:") || l.starts_with("de :") || l.starts_with("de:")) && l.contains('@'))
 }
 
 // ---------- HTML -> text, blockquote-aware ----------
@@ -542,12 +562,27 @@ pub fn html_to_text_quote_aware(html: &str) -> String {
 // ---------- contacts helpers ----------
 
 const FREEMAIL: &[&str] = &[
-    "gmail.com", "googlemail.com", "gmx.de", "gmx.ch", "gmx.net", "gmx.at", "bluewin.ch",
-    "hotmail.com", "hotmail.de", "hotmail.ch", "hotmail.fr", "outlook.com", "outlook.de",
-    "live.com", "live.de", "msn.com", "yahoo.com", "yahoo.de", "yahoo.fr", "ymail.com",
-    "web.de", "t-online.de", "freenet.de", "aol.com", "icloud.com", "me.com", "mac.com",
-    "protonmail.com", "proton.me", "pm.me", "posteo.de", "mailbox.org", "fastmail.com",
-    "hispeed.ch", "sunrise.ch", "swissonline.ch", "green.ch", "zoho.com", "mail.com",
+    // global
+    "gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com", "msn.com",
+    "yahoo.com", "ymail.com", "aol.com", "icloud.com", "me.com", "mac.com", "protonmail.com",
+    "proton.me", "pm.me", "mailbox.org", "fastmail.com", "zoho.com", "mail.com", "gmx.net",
+    // DE/AT/CH
+    "gmx.de", "gmx.ch", "gmx.at", "web.de", "t-online.de", "freenet.de", "posteo.de",
+    "outlook.de", "hotmail.de", "live.de", "yahoo.de", "hotmail.ch", "bluewin.ch",
+    "hispeed.ch", "sunrise.ch", "swissonline.ch", "green.ch",
+    // FR/BE/NL
+    "hotmail.fr", "yahoo.fr", "orange.fr", "wanadoo.fr", "free.fr", "laposte.net", "sfr.fr",
+    "ziggo.nl", "kpnmail.nl", "telenet.be", "skynet.be",
+    // IT/ES/PT
+    "libero.it", "virgilio.it", "tiscali.it", "alice.it", "terra.es", "sapo.pt",
+    // PL/CZ/Nordics
+    "wp.pl", "o2.pl", "onet.pl", "interia.pl", "seznam.cz", "centrum.cz", "telia.com",
+    "online.no",
+    // UK/US ISPs
+    "btinternet.com", "sky.com", "comcast.net", "verizon.net", "att.net", "sbcglobal.net",
+    // RU/Asia
+    "yandex.ru", "yandex.com", "mail.ru", "qq.com", "163.com", "126.com", "naver.com",
+    "daum.net", "rediffmail.com",
 ];
 
 const ROLE_LOCALPARTS: &[&str] = &[
@@ -555,12 +590,20 @@ const ROLE_LOCALPARTS: &[&str] = &[
     "newsletter", "news", "bounce", "bounces", "mailer-daemon", "postmaster", "notification",
     "notifications", "notify", "alert", "alerts", "billing", "invoice", "service", "hello",
     "contact", "office", "admin", "webmaster", "marketing", "sales", "team", "reply",
+    // DE
     "kundenservice", "kontakt", "rechnung", "buchhaltung",
+    // FR
+    "ne-pas-repondre", "nepasrepondre", "facture", "serviceclient",
+    // ES/IT/NL/PL
+    "no-responder", "noresponder", "atencionalcliente", "fattura", "klantenservice",
+    "faktura",
 ];
 
 pub fn org_for(email: &str) -> Option<String> {
     let domain = email.rsplit_once('@')?.1.to_ascii_lowercase();
-    if FREEMAIL.contains(&domain.as_str()) {
+    if FREEMAIL.contains(&domain.as_str())
+        || crate::config::cfg().freemail_extra.iter().any(|d| *d == domain)
+    {
         None
     } else {
         Some(domain)
@@ -574,7 +617,9 @@ pub fn is_role_address(email: &str) -> bool {
     let l = local.to_ascii_lowercase();
     ROLE_LOCALPARTS
         .iter()
-        .any(|r| l == *r || l.starts_with(&format!("{r}+")) || l.starts_with(&format!("{r}-")) || l.starts_with(&format!("{r}@")))
+        .copied()
+        .chain(crate::config::cfg().role_extra.iter().map(|s| s.as_str()))
+        .any(|r| l == r || l.starts_with(&format!("{r}+")) || l.starts_with(&format!("{r}-")))
 }
 
 #[cfg(test)]

@@ -17,9 +17,12 @@ pub struct ImapSource {
 }
 
 impl ImapSource {
-    pub fn connect(host: &str, port: u16, user: &str, password: &str) -> Result<Self> {
+    /// `security`: "ssl" (implicit TLS, usually port 993) or "starttls"
+    /// (plaintext greeting upgraded via STARTTLS, usually port 143).
+    pub fn connect(host: &str, port: u16, user: &str, password: &str, security: &str) -> Result<Self> {
         use std::net::ToSocketAddrs;
         use std::time::Duration;
+        let timeout = Duration::from_secs(crate::config::cfg().imap_timeout_secs);
         let addr = (host, port)
             .to_socket_addrs()
             .with_context(|| format!("cannot resolve {host}"))?
@@ -28,16 +31,27 @@ impl ImapSource {
         // Timeouts everywhere: a hung server must fail a sync, never wedge it.
         let stream = TcpStream::connect_timeout(&addr, Duration::from_secs(20))
             .with_context(|| format!("cannot reach {host}:{port}"))?;
-        stream.set_read_timeout(Some(Duration::from_secs(120)))?;
-        stream.set_write_timeout(Some(Duration::from_secs(120)))?;
+        stream.set_read_timeout(Some(timeout))?;
+        stream.set_write_timeout(Some(timeout))?;
         let tls = native_tls::TlsConnector::builder().build()?;
-        let tls_stream = tls
-            .connect(host, stream)
-            .with_context(|| format!("TLS handshake with {host} failed"))?;
-        let mut client = imap::Client::new(tls_stream);
-        client
-            .read_greeting()
-            .with_context(|| format!("{host} did not send an IMAP greeting"))?;
+        let client = if security.eq_ignore_ascii_case("starttls") {
+            let mut plain = imap::Client::new(stream);
+            plain
+                .read_greeting()
+                .with_context(|| format!("{host} did not send an IMAP greeting"))?;
+            plain
+                .secure(host, &tls)
+                .with_context(|| format!("STARTTLS upgrade with {host} failed"))?
+        } else {
+            let tls_stream = tls
+                .connect(host, stream)
+                .with_context(|| format!("TLS handshake with {host} failed"))?;
+            let mut client = imap::Client::new(tls_stream);
+            client
+                .read_greeting()
+                .with_context(|| format!("{host} did not send an IMAP greeting"))?;
+            client
+        };
         let session = client
             .login(user, password)
             .map_err(|(e, _)| anyhow::anyhow!("login failed: {e}"))?;

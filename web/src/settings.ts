@@ -238,6 +238,7 @@ async function toggleFolders(id: number, card: HTMLElement): Promise<void> {
     name: String(fd.get("name")),
     host: String(fd.get("host")),
     port: parseInt(String(fd.get("port")), 10) || 993,
+    security: String(fd.get("security") || "ssl"),
     username: String(fd.get("username")),
     password: String(fd.get("password")),
   });

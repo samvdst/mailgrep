@@ -118,6 +118,21 @@ rather than pretending to a unified relevance.
 | `MAILGREP_BOOST_QUOTED` | `0.25` | ranking boost: quoted history |
 | `MAILGREP_BOOST_SUBJECT` | `1.8` | ranking boost: subject |
 | `MAILGREP_BOOST_EXACT` | `2.0` | exact-match boost over fuzzy |
+| `MAILGREP_FREEMAIL_EXTRA` | – | comma-separated domains to add to the freemail list (never become organisations) |
+| `MAILGREP_ROLE_EXTRA` | – | comma-separated localparts flagged as role addresses (`noreply`-style) |
+| `MAILGREP_SUBJECT_PREFIXES_EXTRA` | – | comma-separated reply/forward prefixes for your locale (e.g. `odp,ynt`) |
+| `MAILGREP_QUOTE_MARKERS_EXTRA` | – | `\|`-separated "everything below is quoted" line prefixes |
+| `MAILGREP_DATE_AGREE_HOURS` | `48` | window within which two date sources corroborate each other |
+| `MAILGREP_SKEW_HOURS` | `24` | canonical-vs-stored difference that flags `dateskew:` |
+| `MAILGREP_DATE_FLOOR_YEAR` | `1990` | dates before this year are implausible |
+| `MAILGREP_SYNC_BATCH` | `100` | messages per ingest batch (checkpoint granularity) |
+| `MAILGREP_IMAP_TIMEOUT_SECS` | `120` | IMAP socket read/write timeout |
+
+The built-in freemail, role-address, subject-prefix, and quoted-text detection
+lists cover English, German, French, Spanish, Italian, Dutch, Portuguese,
+Polish, Nordic, and Turkish conventions out of the box; the `_EXTRA` variables
+extend them without forking. IMAP accounts support both implicit TLS (993) and
+STARTTLS (143), selectable when adding the account.
 
 Boosts are configuration because they need tuning against a real corpus:
 `scripts/relevance.py queries.tsv` reports hit-rate@k and MRR for a set of

@@ -11,8 +11,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-const BATCH: usize = 100;
-
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct SyncProgress {
     pub running: bool,
@@ -123,7 +121,7 @@ pub fn run_sync(
         prog.discovered += new_uids.len() as u64;
         set_progress(prog.clone());
 
-        for chunk in new_uids.chunks(BATCH) {
+        for chunk in new_uids.chunks(crate::config::cfg().sync_batch.max(1)) {
             let fetched = match source.fetch_text(folder, chunk) {
                 Ok(f) => f,
                 Err(e) => {

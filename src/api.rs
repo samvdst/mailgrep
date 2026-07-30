@@ -67,6 +67,7 @@ pub fn make_source(account: &Account, crypto: &Option<Crypto>) -> Result<Box<dyn
             account.port,
             &account.username,
             &password,
+            &account.security,
         )?))
     }
 }
@@ -149,6 +150,9 @@ struct NewAccount {
     username: String,
     #[serde(default)]
     password: String,
+    /// "ssl" (implicit TLS, port 993) or "starttls" (port 143)
+    #[serde(default = "default_security")]
+    security: String,
     /// fixture dir instead of imap
     #[serde(default)]
     fixture_dir: Option<String>,
@@ -156,6 +160,10 @@ struct NewAccount {
 
 fn default_port() -> u16 {
     993
+}
+
+fn default_security() -> String {
+    "ssl".into()
 }
 
 async fn add_account(
@@ -168,22 +176,26 @@ async fn add_account(
         }
         let id = app
             .store
-            .add_account(&body.name, "fixture", dir, 0, "", &[])
+            .add_account(&body.name, "fixture", dir, 0, "", &[], "ssl")
             .await?;
         return Ok(Json(json!({ "id": id })));
     }
     if body.host.is_empty() || body.username.is_empty() || body.password.is_empty() {
         return Err(bad("host, username and password are required"));
     }
+    if !["ssl", "starttls"].contains(&body.security.as_str()) {
+        return Err(bad("security must be \"ssl\" or \"starttls\""));
+    }
     // Verify credentials before storing anything (story 4).
-    let (host, port, user, pass) = (
+    let (host, port, user, pass, sec) = (
         body.host.clone(),
         body.port,
         body.username.clone(),
         body.password.clone(),
+        body.security.clone(),
     );
     tokio::task::spawn_blocking(move || {
-        crate::imapsource::ImapSource::connect(&host, port, &user, &pass).map(|_| ())
+        crate::imapsource::ImapSource::connect(&host, port, &user, &pass, &sec).map(|_| ())
     })
     .await
     .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
@@ -196,7 +208,15 @@ async fn add_account(
     let enc = crypto.encrypt(&body.password)?;
     let id = app
         .store
-        .add_account(&body.name, "imap", &body.host, body.port, &body.username, &enc)
+        .add_account(
+            &body.name,
+            "imap",
+            &body.host,
+            body.port,
+            &body.username,
+            &enc,
+            &body.security,
+        )
         .await?;
     Ok(Json(json!({ "id": id })))
 }

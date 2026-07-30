@@ -48,6 +48,10 @@
       <input name="name" placeholder="name" required>
       <input name="host" placeholder="imap host" required>
       <input name="port" type="number" value="993" min="1" max="65535" title="port">
+      <select name="security" title="connection security">
+        <option value="ssl" selected>SSL/TLS (993)</option>
+        <option value="starttls">STARTTLS (143)</option>
+      </select>
       <input name="username" placeholder="username" required>
       <input name="password" type="password" placeholder="password" required>
       <button type="submit">Add IMAP account</button>

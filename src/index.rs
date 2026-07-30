@@ -371,19 +371,31 @@ impl AccountIndex {
                 )),
                 FilterField::Folder => {
                     let lc = v.to_ascii_lowercase();
-                    // exact folder, or any subfolder of it
-                    let exact = TermQuery::new(
-                        Term::from_field_text(f.folder, &lc),
-                        IndexRecordOption::Basic,
-                    );
-                    let sub = RangeQuery::new(
-                        Bound::Included(Term::from_field_text(f.folder, &format!("{lc}/"))),
-                        Bound::Excluded(Term::from_field_text(f.folder, &format!("{lc}0"))),
-                    );
-                    Box::new(BooleanQuery::new(vec![
-                        (Occur::Should, Box::new(exact) as Box<dyn Query>),
-                        (Occur::Should, Box::new(sub)),
-                    ]))
+                    // exact folder, or any subfolder — both '/' and '.' occur
+                    // as IMAP hierarchy delimiters in the wild
+                    let mut subs: Vec<(Occur, Box<dyn Query>)> = vec![(
+                        Occur::Should,
+                        Box::new(TermQuery::new(
+                            Term::from_field_text(f.folder, &lc),
+                            IndexRecordOption::Basic,
+                        )),
+                    )];
+                    for delim in ['/', '.'] {
+                        subs.push((
+                            Occur::Should,
+                            Box::new(RangeQuery::new(
+                                Bound::Included(Term::from_field_text(
+                                    f.folder,
+                                    &format!("{lc}{delim}"),
+                                )),
+                                Bound::Excluded(Term::from_field_text(
+                                    f.folder,
+                                    &format!("{lc}{}", (delim as u8 + 1) as char),
+                                )),
+                            )),
+                        ));
+                    }
+                    Box::new(BooleanQuery::new(subs))
                 }
                 FilterField::Thread => Box::new(TermQuery::new(
                     Term::from_field_text(f.thread, v),

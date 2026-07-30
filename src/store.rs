@@ -28,6 +28,8 @@ pub struct Account {
     pub last_sync_status: Option<String>,
     /// "imap" or a fixture directory path (for tests / demo)
     pub kind: String,
+    /// "ssl" (implicit TLS) or "starttls"
+    pub security: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +212,13 @@ impl Store {
         let db = libsql::Builder::new_local(path).build().await?;
         let conn = db.connect()?;
         conn.execute_batch(SCHEMA).await?;
+        // additive migrations; failure means the column already exists
+        conn.execute(
+            "ALTER TABLE accounts ADD COLUMN security TEXT NOT NULL DEFAULT 'ssl'",
+            (),
+        )
+        .await
+        .ok();
         conn.execute("PRAGMA journal_mode=WAL", ()).await.ok();
         conn.execute("PRAGMA foreign_keys=ON", ()).await.ok();
         Ok(Self { conn })
@@ -217,6 +226,7 @@ impl Store {
 
     // ---------- accounts ----------
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn add_account(
         &self,
         name: &str,
@@ -225,12 +235,13 @@ impl Store {
         port: u16,
         username: &str,
         password_enc: &[u8],
+        security: &str,
     ) -> Result<i64> {
         self.conn
             .execute(
-                "INSERT INTO accounts (name, kind, host, port, username, password_enc, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?)",
-                params![name, kind, host, port as i64, username, password_enc, now()],
+                "INSERT INTO accounts (name, kind, host, port, username, password_enc, security, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                params![name, kind, host, port as i64, username, password_enc, security, now()],
             )
             .await?;
         Ok(self.conn.last_insert_rowid())
@@ -241,7 +252,7 @@ impl Store {
             .conn
             .query(
                 "SELECT id, name, kind, host, port, username, password_enc, excluded_folders,
-                        sync_interval_mins, last_sync_at, last_sync_status
+                        sync_interval_mins, last_sync_at, last_sync_status, security
                  FROM accounts ORDER BY id",
                 (),
             )
@@ -260,6 +271,7 @@ impl Store {
                 sync_interval_mins: r.get(8)?,
                 last_sync_at: r.get(9)?,
                 last_sync_status: r.get(10)?,
+                security: r.get(11)?,
             });
         }
         Ok(out)
