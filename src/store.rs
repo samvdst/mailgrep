@@ -1052,6 +1052,41 @@ impl Store {
         Ok(())
     }
 
+    pub async fn image_allowances(&self, account_id: i64) -> Result<Vec<serde_json::Value>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT sender, at FROM image_allow WHERE account_id = ? ORDER BY at DESC",
+                params![account_id],
+            )
+            .await?;
+        let mut out = Vec::new();
+        while let Some(r) = rows.next().await? {
+            out.push(serde_json::json!({
+                "sender": r.get::<String>(0)?,
+                "at": r.get::<i64>(1)?,
+            }));
+        }
+        Ok(out)
+    }
+
+    pub async fn revoke_images(&self, account_id: i64, sender: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM image_allow WHERE account_id = ? AND sender = ?",
+                params![account_id, sender.to_ascii_lowercase()],
+            )
+            .await?;
+        Ok(())
+    }
+
+    pub async fn rename_account(&self, id: i64, name: &str) -> Result<()> {
+        self.conn
+            .execute("UPDATE accounts SET name = ? WHERE id = ?", params![name, id])
+            .await?;
+        Ok(())
+    }
+
     pub async fn images_allowed(&self, account_id: i64, sender: &str) -> Result<bool> {
         let mut rows = self
             .conn

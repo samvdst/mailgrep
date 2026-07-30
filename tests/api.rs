@@ -311,11 +311,39 @@ async fn full_corpus_behaviour() {
     assert_eq!(s, StatusCode::OK);
     assert_eq!(&bytes[..4], b"\x89PNG");
 
-    // ---- per-sender image allowance
+    // ---- per-sender image allowance: grant, list, revoke
     let (s, _) = req(r, "POST", &format!("/api/message/{promo_id}/allow_images"), None).await;
     assert_eq!(s, StatusCode::OK);
     let (_, html, _) = raw_req(r, &format!("/api/message/{promo_id}/html")).await;
     assert!(String::from_utf8(html).unwrap().contains("tracker.shop.ch"));
+    let (_, body) = req(r, "GET", &format!("/api/accounts/{aid}/image_allowances"), None).await;
+    assert_eq!(body["allowances"][0]["sender"], "newsletter@shop.ch", "{body}");
+    let (s, _) = req(
+        r,
+        "DELETE",
+        &format!("/api/accounts/{aid}/image_allowances"),
+        Some(serde_json::json!({"sender": "newsletter@shop.ch"})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, body) = req(r, "GET", &format!("/api/accounts/{aid}/image_allowances"), None).await;
+    assert_eq!(body["allowances"].as_array().unwrap().len(), 0);
+    let (_, html, _) = raw_req(r, &format!("/api/message/{promo_id}/html")).await;
+    assert!(!String::from_utf8(html).unwrap().contains("tracker.shop.ch"), "revoke must re-block");
+
+    // ---- account rename
+    let (s, _) = req(
+        r,
+        "POST",
+        &format!("/api/accounts/{aid}/rename"),
+        Some(serde_json::json!({"name": "renamed"})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    let (_, body) = req(r, "GET", "/api/status", None).await;
+    assert_eq!(body["accounts"][0]["name"], "renamed");
+    let (s, _) = req(r, "POST", &format!("/api/accounts/{aid}/rename"), Some(serde_json::json!({"name": "  "}))).await;
+    assert_eq!(s, StatusCode::BAD_REQUEST);
 
     // ---- raw source view
     let (s, raw, _) = raw_req(r, &format!("/api/message/{root_id}/raw")).await;

@@ -78,7 +78,7 @@ function renderAccounts(): void {
           ? `<div class="err">${esc(p.error)}</div>`
           : "";
       return `<div class="acct" data-id="${a.id}">
-        <div class="acct-head"><b>${esc(a.name)}</b> <span class="dim">${esc(a.kind)} · ${esc(a.host)}</span></div>
+        <div class="acct-head"><b>${esc(a.name)}</b> <button data-act="rename" class="linkish" title="rename account">✎</button> <span class="dim">${esc(a.kind)} · ${esc(a.host)}</span></div>
         <div class="dim">${a.message_count.toLocaleString()} messages · ${humanSize(a.index_size_bytes)} index</div>
         <div class="dim">last sync ${fmtLocal(a.last_sync_at)}${a.last_sync_status ? ` · ${esc(a.last_sync_status)}` : ""}</div>
         ${prog}
@@ -87,6 +87,7 @@ function renderAccounts(): void {
           <button data-act="bounded">Bounded sync…</button>
           <button data-act="rebuild">Rebuild derived data</button>
           <button data-act="folders">Folders…</button>
+          <button data-act="images">Images…</button>
           <button data-act="delete" class="danger">Delete</button>
         </div>
         <div class="acct-interval">
@@ -94,6 +95,7 @@ function renderAccounts(): void {
           <button data-act="interval">Set</button>
         </div>
         <div class="acct-folders" hidden></div>
+        <div class="acct-images" hidden></div>
       </div>`;
     })
     .join("");
@@ -104,10 +106,10 @@ acctList.addEventListener("click", (e) => {
   if (!btn) return;
   const card = btn.closest<HTMLElement>(".acct")!;
   const id = Number(card.dataset.id);
-  void accountAction(btn.dataset.act!, id, card);
+  void accountAction(btn.dataset.act!, id, card, btn);
 });
 
-async function accountAction(act: string, id: number, card: HTMLElement): Promise<void> {
+async function accountAction(act: string, id: number, card: HTMLElement, btn?: HTMLButtonElement): Promise<void> {
   sErr.hidden = true;
   try {
     switch (act) {
@@ -136,8 +138,27 @@ async function accountAction(act: string, id: number, card: HTMLElement): Promis
         await post(`/api/accounts/${id}/interval`, { minutes: parseInt(input.value, 10) || 0 });
         break;
       }
+      case "rename": {
+        const a = accounts.find((x) => x.id === id);
+        const name = prompt("New account name:", a?.name ?? "");
+        if (!name || !name.trim()) return;
+        await post(`/api/accounts/${id}/rename`, { name: name.trim() });
+        break;
+      }
       case "folders":
         return toggleFolders(id, card);
+      case "images":
+        return toggleImages(id, card);
+      case "revokeimg": {
+        const sender = btn?.dataset.sender;
+        if (!sender) return;
+        await api(`/api/accounts/${id}/image_allowances`, {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sender }),
+        });
+        return toggleImages(id, card, true);
+      }
       case "savefolders": {
         const excluded = [...card.querySelectorAll<HTMLInputElement>(".acct-folders input:checked")]
           .map((c) => c.value);
@@ -154,6 +175,32 @@ async function accountAction(act: string, id: number, card: HTMLElement): Promis
     return showErr(sErr, (e as Error).message);
   }
   await refreshStatus();
+}
+
+/// Per-sender remote-image allowances: list + revoke.
+async function toggleImages(id: number, card: HTMLElement, forceOpen = false): Promise<void> {
+  const box = card.querySelector<HTMLElement>(".acct-images")!;
+  if (!box.hidden && !forceOpen) {
+    box.hidden = true;
+    return;
+  }
+  try {
+    const d = await api<{ allowances: { sender: string; at: number }[] }>(
+      `/api/accounts/${id}/image_allowances`,
+    );
+    box.innerHTML = d.allowances.length
+      ? `<div class="dim">Remote images always allowed from:</div>` +
+        d.allowances
+          .map(
+            (a) =>
+              `<div class="imgallow"><span>${esc(a.sender)}</span> <span class="dim">${fmtLocal(a.at)}</span> <button data-act="revokeimg" data-sender="${esc(a.sender)}" class="danger" title="block again">×</button></div>`,
+          )
+          .join("")
+      : '<div class="dim">No senders allowed — remote images are blocked everywhere.</div>';
+    box.hidden = false;
+  } catch (e) {
+    showErr(sErr, (e as Error).message);
+  }
 }
 
 async function toggleFolders(id: number, card: HTMLElement): Promise<void> {

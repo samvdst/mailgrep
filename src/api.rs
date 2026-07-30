@@ -82,6 +82,11 @@ pub fn router(app: SharedApp) -> Router {
         .route("/api/accounts/{id}/sync", post(trigger_sync))
         .route("/api/accounts/{id}/rebuild", post(rebuild))
         .route("/api/accounts/{id}/interval", post(set_interval))
+        .route("/api/accounts/{id}/rename", post(rename_account))
+        .route(
+            "/api/accounts/{id}/image_allowances",
+            get(list_image_allowances).delete(revoke_image_allowance),
+        )
         .route("/api/search", get(search))
         .route("/api/message/{id}", get(message_detail))
         .route("/api/message/{id}/html", get(message_html))
@@ -254,6 +259,46 @@ async fn set_interval(
     Json(body): Json<IntervalBody>,
 ) -> ApiResult<Json<Value>> {
     app.store.set_sync_interval(id, body.minutes.max(0)).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct RenameBody {
+    name: String,
+}
+
+async fn rename_account(
+    State(app): State<SharedApp>,
+    Path(id): Path<i64>,
+    Json(body): Json<RenameBody>,
+) -> ApiResult<Json<Value>> {
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(bad("name must not be empty"));
+    }
+    app.store.rename_account(id, name).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn list_image_allowances(
+    State(app): State<SharedApp>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<Value>> {
+    let list = app.store.image_allowances(id).await?;
+    Ok(Json(json!({ "allowances": list })))
+}
+
+#[derive(Deserialize)]
+struct RevokeBody {
+    sender: String,
+}
+
+async fn revoke_image_allowance(
+    State(app): State<SharedApp>,
+    Path(id): Path<i64>,
+    Json(body): Json<RevokeBody>,
+) -> ApiResult<Json<Value>> {
+    app.store.revoke_images(id, &body.sender).await?;
     Ok(Json(json!({ "ok": true })))
 }
 
