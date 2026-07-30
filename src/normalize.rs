@@ -232,6 +232,12 @@ fn plausible(ts: i64, now: i64) -> bool {
     ts >= MIN_PLAUSIBLE && ts <= now + 86400
 }
 
+/// Corroboration voting: three witnesses, and when two agree (within 48h)
+/// they outvote the third. Catches both known liars — INTERNALDATE reset by
+/// client moves (Received+Date agree, outvote it) and Received re-stamped by
+/// account imports (Date+INTERNALDATE agree, outvote it) — without handing
+/// authority to the sender-controlled Date: header alone, which an oldest-
+/// wins rule would.
 pub fn derive_date(
     received_top: Option<i64>,
     date_hdr: Option<i64>,
@@ -239,11 +245,21 @@ pub fn derive_date(
     offset_mins: i32,
     now: i64,
 ) -> DateDerived {
-    let (canonical, source) = if let Some(r) = received_top.filter(|t| plausible(*t, now)) {
+    const AGREE: i64 = 48 * 3600;
+    let r = received_top.filter(|t| plausible(*t, now));
+    let d = date_hdr.filter(|t| plausible(*t, now));
+    let i = internaldate.filter(|t| plausible(*t, now));
+    let agree = |a: Option<i64>, b: Option<i64>| matches!((a, b), (Some(x), Some(y)) if (x - y).abs() <= AGREE);
+
+    let (canonical, source) = if agree(r, d) || agree(r, i) {
+        (r.unwrap(), DateSource::Received)
+    } else if agree(d, i) {
+        (d.unwrap(), DateSource::DateHeader)
+    } else if let Some(r) = r {
         (r, DateSource::Received)
-    } else if let Some(d) = date_hdr.filter(|t| plausible(*t, now)) {
+    } else if let Some(d) = d {
         (d, DateSource::DateHeader)
-    } else if let Some(i) = internaldate.filter(|t| plausible(*t, now)) {
+    } else if let Some(i) = i {
         (i, DateSource::Internaldate)
     } else {
         // Last resort: keep whatever exists even if implausible, else 0.
@@ -603,6 +619,33 @@ mod tests {
         let d = derive_date(Some(100), None, None, 0, now);
         assert_eq!(d.source, DateSource::None);
         assert_eq!(d.canonical, 100);
+    }
+
+    #[test]
+    fn date_corroboration_voting() {
+        let now = 1_753_000_000;
+        let orig = 1_440_000_000; // 2015
+        let import = 1_680_000_000; // 2023
+
+        // Gmail import: Received re-stamped at import time; Date and
+        // INTERNALDATE agree on the original -> they outvote Received.
+        let d = derive_date(Some(import), Some(orig), Some(orig + 3600), 0, now);
+        assert_eq!(d.source, DateSource::DateHeader);
+        assert_eq!(d.canonical, orig);
+        assert!(!d.skew, "import must not be flagged as skew");
+
+        // neomutt move: INTERNALDATE re-stamped; Received and Date agree.
+        let d = derive_date(Some(orig), Some(orig - 120), Some(import), 0, now);
+        assert_eq!(d.source, DateSource::Received);
+        assert_eq!(d.canonical, orig);
+        assert!(d.skew, "move corruption stays visible");
+
+        // broken-old sender clock: Received and INTERNALDATE agree, the
+        // ancient Date: loses (this is what oldest-wins would get wrong)
+        let broken = 700_000_000; // 1992, plausible but wrong
+        let d = derive_date(Some(orig), Some(broken), Some(orig + 60), 0, now);
+        assert_eq!(d.source, DateSource::Received);
+        assert_eq!(d.canonical, orig);
     }
 
     #[test]
