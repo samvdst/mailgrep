@@ -1,7 +1,8 @@
 services:
   mailgrep:
-    build: .
-    image: mailgrep:latest
+    image: ghcr.io/samvdst/mailgrep:latest
+    # building from a source checkout instead: uncomment the next line
+    # build: .
     container_name: mailgrep
     restart: unless-stopped
     ports:

@@ -1,10 +1,24 @@
 # mailgrep
 
+[![ci](https://github.com/samvdst/mailgrep/actions/workflows/ci.yml/badge.svg)](https://github.com/samvdst/mailgrep/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
+[![ghcr](https://img.shields.io/badge/ghcr.io-samvdst%2Fmailgrep-24292f?logo=github)](https://github.com/samvdst/mailgrep/pkgs/container/mailgrep)
+
 Self-hosted search over IMAP mail. Fast, accurate, and honest about what it knows.
 
 Your mail clients are for reading and acting on mail. mailgrep does the one thing
 none of them do well: **find things** — in an archive spanning years, folders, and
 the accumulated damage of clients that disagree about dates and folder names.
+
+![mailgrep — search, thread view and message detail](docs/screenshots/search-dark.png)
+
+<details>
+<summary>More screenshots (light mode, date-skew flagging)</summary>
+
+![light mode](docs/screenshots/search-light.png)
+![skewed dates flagged](docs/screenshots/skew-dark.png)
+
+</details>
 
 - **One search box.** Free text plus filters in a single query string:
   `boiler landlord from:@immo.ch after:2021-01 has:attachment`
@@ -31,15 +45,17 @@ has **no authentication** — the network is the trust boundary. Run it on a
 private network (Tailscale, WireGuard, LAN) and never expose it publicly.
 
 ```sh
-git clone https://github.com/samvdst/mailgrep.git
-cd mailgrep
+mkdir mailgrep && cd mailgrep
+curl -O https://raw.githubusercontent.com/samvdst/mailgrep/main/docker-compose.yml
 
 # The key that encrypts your IMAP credentials at rest. Generate once, keep it —
 # losing it means re-entering your accounts.
 echo "MAILGREP_KEY=$(openssl rand -hex 32)" > .env
 
-docker compose up -d --build
+docker compose up -d      # pulls ghcr.io/samvdst/mailgrep
 ```
+
+(Or build from source: clone the repo and `docker compose up -d --build`.)
 
 Open `http://<host>:8025`, then:
 
@@ -164,4 +180,6 @@ designed for as a future separate mode — tables exist, nothing is generated.
 
 ## License
 
-Private for now.
+[AGPL-3.0](LICENSE). Self-host freely; if you offer mailgrep as a service,
+your modifications must be shared under the same license. See
+`CONTRIBUTING.md` and `SECURITY.md`.
