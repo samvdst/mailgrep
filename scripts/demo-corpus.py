@@ -19,11 +19,17 @@ PEOPLE = [
     ("David Chen", "david.chen@nimbusworks.io"),
     ("Elena Rossi", "elena@studiorossi.it"),
     ("Tom Baker", "tom.baker@brightpixel.dev"),
+    ("Petra Vogel", "petra.vogel@stadtwerke-muster.de"),
+    ("Nico Meier", "nico@velowerkstatt.ch"),
+    ("Claire Fontaine", "claire@fontaine-avocats.ch"),
+    ("Ben Okafor", "ben.okafor@quantleaf.dev"),
 ]
 ROBOTS = [
-    ("Cloud Invoices", "billing@nimbusworks.io"),
-    ("Alpen Newsletter", "newsletter@alpenblick-immobilien.ch"),
-    ("Conference Team", "noreply@rustconf.example"),
+    ("Cloud Invoices", "billing@nimbusworks.io", "invoice"),
+    ("Stadtwerke Abrechnung", "rechnung@stadtwerke-muster.de", "invoice"),
+    ("Hosting Billing", "billing@serverpark.example", "invoice"),
+    ("Alpen Newsletter", "newsletter@alpenblick-immobilien.ch", "news"),
+    ("Conference Team", "noreply@rustconf.example", "news"),
 ]
 ME = ("Sam Demo", "sam@demo.example")
 
@@ -49,6 +55,24 @@ THREADS = [
         (0, "Guten Tag Herr Demo\n\nFuer die Steuererklaerung fehlen noch: Lohnausweis, Saeule 3a Bescheinigung und die Zinsabrechnung.\n\nFreundliche Gruesse\nLisa Brunner", 0),
         (-1, "Anbei der Lohnausweis und die 3a-Bescheinigung. Die Zinsabrechnung folgt.", 2),
     ]),
+    ("Rechnung Velo Service", [9], [
+        (0, "Hoi Sam\n\nDein Velo ist abholbereit, die Rechnung fuer den Service haengt an. Bremsbelaege waren komplett durch.\n\nGruss Nico", 0),
+        (-1, "Super, danke! Ich komme Samstag vorbei und zahle bar.", 1),
+    ]),
+    ("Nebenkostenabrechnung 2023", [0], [
+        (0, "Sehr geehrter Herr Demo\n\nAnbei die Nebenkostenabrechnung 2023. Die Rechnung weist ein Guthaben von CHF 142.50 aus.\n\nFreundliche Gruesse\nAnna Keller", 0),
+        (-1, "Besten Dank, das Guthaben duerfen Sie mit der naechsten Miete verrechnen.", 4),
+    ]),
+    ("Mandat Nachbarschaftsstreit", [10], [
+        (0, "Cher Monsieur,\n\nSuite a notre entretien, vous trouverez ci-joint la convention d'honoraires pour le mandat.\n\nMaitre Fontaine", 0),
+        (-1, "Merci beaucoup. Je vous renvoie la convention signee cette semaine.", 3),
+        (0, "Bien recu, nous deposons la requete lundi.", 8),
+    ]),
+    ("Search index performance review", [11, 5], [
+        (0, "Sam — profiled the new index build: 40% faster after the mmap change, but memory spikes during merges. Thoughts?", 0),
+        (1, "We hit the same thing at Nimbus; capping merge threads helped.", 1),
+        (-1, "Capping at 2 merge threads now, spike is gone. Shipping it.", 2),
+    ]),
 ]
 
 ONEOFFS = [
@@ -57,6 +81,13 @@ ONEOFFS = [
     (4, "Fotos vom Wochenende", "Hoi Sam!\n\nDie Fotos vom Wanderwochenende sind online — die vom Gipfel sind der Hammer."),
     (5, "Standup notes + search latency", "Notes from today: p99 search latency down to 8ms after the index rebuild. Shipping Thursday."),
     (6, "Preventivo sito web", "Ciao Sam,\n\nin allegato il preventivo per il nuovo sito. Fammi sapere!\n\nElena"),
+    (3, "Rechnung Boiler Reparatur", "Guten Tag\n\nDie Rechnung fuer die Boiler-Reparatur vom Montag liegt bei. Der Klempner musste das Ventil komplett ersetzen.\n\nJonas Weber"),
+    (8, "Zaehlerstand Ablesung", "Sehr geehrter Kunde,\n\nbitte teilen Sie uns bis Ende Monat Ihren aktuellen Zaehlerstand mit.\n\nStadtwerke Muster"),
+    (2, "Fristerstreckung Steuern genehmigt", "Guten Tag Herr Demo\n\nDie Fristerstreckung bis 30. September wurde genehmigt.\n\nLisa Brunner"),
+    (7, "Design review Thursday?", "Hey — can we move the design review to Thursday 15:00? The new facet rail mockups are ready."),
+    (9, "Winterreifen einlagern", "Hoi Sam\n\nDeine Winterreifen sind eingelagert, Abholung ab Oktober jederzeit moeglich."),
+    (10, "Convention signee recue", "Cher Monsieur,\n\nNous confirmons la reception de la convention signee.\n\nMaitre Fontaine"),
+    (11, "Benchmark numbers look great", "The comparison table is done — we beat the baseline on every recall metric. Draft attached tomorrow."),
 ]
 
 
@@ -145,23 +176,27 @@ for i, (p_i, subj, body) in enumerate(ONEOFFS):
     n += 1
     write_eml("INBOX", f"{n:03}.eml", hdrs, bdy, date)
 
-# robots / newsletters spread over years
-for y in range(2019, 2026):
-    for i, (rname, raddr) in enumerate(ROBOTS):
-        date = datetime(y, 2 + i * 4, 12, 10, tzinfo=timezone.utc)
-        headers = base_headers(
-            f"rob{y}{i}@demo.example",
-            f"{'Rechnung' if 'billing' in raddr else 'Newsletter'} {rname} {y}-{2 + i * 4:02}",
-            (rname, raddr),
-            ME,
-            date,
-        )
-        if "billing" in raddr:
-            hdrs, bdy = with_pdf(headers, f"Invoice for {y}, attached as PDF.", f"invoice-{y}.pdf")
-        else:
-            hdrs, bdy = plain(headers, f"News and updates from {rname}, edition {y}.")
-        n += 1
-        # archives get years-old mail; a couple keep fresh mtimes -> skew demo
-        write_eml("Archives", f"{n:03}.eml", hdrs, bdy, date, mtime_now=(y == 2019 and i == 0))
+# robots: invoices twice a year, newsletters quarterly, spread over a decade
+for y in range(2016, 2026):
+    for i, (rname, raddr, kind) in enumerate(ROBOTS):
+        months = [3, 9] if kind == "invoice" else [1, 4, 7, 10]
+        for m in months:
+            date = datetime(y, m, 5 + i * 3, 10, tzinfo=timezone.utc)
+            subj = (
+                f"Rechnung {rname} {y}-{m:02}" if kind == "invoice"
+                else f"Newsletter {rname} {y}-{m:02}"
+            )
+            headers = base_headers(f"rob{y}{m}{i}@demo.example", subj, (rname, raddr), ME, date)
+            if kind == "invoice":
+                hdrs, bdy = with_pdf(
+                    headers,
+                    f"Guten Tag\n\nIhre Rechnung fuer {y}-{m:02} liegt als PDF bei.\n\n{rname}",
+                    f"rechnung-{y}-{m:02}.pdf",
+                )
+            else:
+                hdrs, bdy = plain(headers, f"News and updates from {rname}, edition {y}-{m:02}.")
+            n += 1
+            # archives get years-old mail; a few keep fresh mtimes -> skew demo
+            write_eml("Archives", f"{n:03}.eml", hdrs, bdy, date, mtime_now=(y == 2019 and i == 0 and m == 3))
 
 print(f"{n} messages in {OUT}/")

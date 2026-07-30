@@ -162,14 +162,12 @@ cargo test                              # normaliser + parser units, API-over-fi
 cargo run                               # API + SPA on :8025
 ```
 
-The test seams follow `SPEC.md`: almost everything is asserted through the HTTP
+The test seams are deliberate: almost everything is asserted through the HTTP
 API against a committed corpus of adversarial `.eml` fixtures
 (`fixtures/corpus/`), so internals are free to change. The normaliser and query
 parser are additionally table-tested as pure functions. The query AST types are
 exported to TypeScript via `ts-rs` (`cargo test` regenerates `bindings/`).
 
-Architecture and the reasoning behind every decision: `DESIGN.md`. Scope and
-user stories: `SPEC.md`.
 
 ## Non-goals (v1)
 

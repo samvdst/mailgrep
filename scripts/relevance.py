@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Relevance harness (SPEC.md "Relevance is measured, not asserted").
+"""Relevance harness — relevance is measured, not asserted.
 
 Reads a TSV of `query<TAB>expected-identity` pairs drawn from the real
 archive (private, not committed), runs each against a live mailgrep, and

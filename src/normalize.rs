@@ -5,8 +5,8 @@ use mail_parser::{HeaderValue, MessageParser, MimeHeaders};
 use sha2::{Digest, Sha256};
 
 /// normalize(), but a panic on one adversarial message becomes an Err the
-/// sync loop can record and skip (SPEC story 15: one malformed message must
-/// never abort the run).
+/// sync loop can record and skip — one malformed message must never abort
+/// the run.
 pub fn normalize_catch(raw: &RawMessage, now: i64) -> anyhow::Result<NormalizedMessage> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| normalize(raw, now))).map_err(|p| {
         let msg = p

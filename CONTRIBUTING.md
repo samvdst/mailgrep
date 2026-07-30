@@ -4,11 +4,12 @@ Thanks for your interest! A few things worth knowing before you start.
 
 ## Ground rules
 
-- **Read `DESIGN.md` first.** Most "why doesn't it do X" questions are
-  answered there, and several non-features are deliberate decisions
-  (no IMAP writes, header-only threading, no fuzzy subject grouping).
-  PRs that reverse a documented decision need a design argument, not just
-  code.
+- **Several non-features are deliberate decisions**, not gaps: mailgrep never
+  writes to IMAP, threads come from `References`/`In-Reply-To` only (no fuzzy
+  subject grouping — a correct-but-incomplete thread beats a confident wrong
+  merge), quoted text is downweighted rather than deleted, dates are derived
+  by corroboration between sources, and accounts are a hard partition. PRs
+  that reverse one of these need a design argument, not just code.
 - Bug reports: include the output of `/api/status`, relevant log lines
   (`podman/docker logs mailgrep`), and — if it's a parsing problem — a
   **redacted** `.eml` that reproduces it. Never attach real mail.
@@ -24,7 +25,7 @@ cargo run                                  # serves on :8025
 Add a fixture account pointing at `fixtures/corpus/` to get test data into
 a running instance.
 
-## Testing conventions (from SPEC.md)
+## Testing conventions
 
 - Most behaviour is tested **through the HTTP API** over the fixture corpus
   (`tests/api.rs`) — internals stay free to change.

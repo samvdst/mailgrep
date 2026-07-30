@@ -27,8 +27,9 @@ COPY --from=web /app/web/dist /app/web/dist
 ENV MAILGREP_DATA=/data \
     MAILGREP_WEB=/app/web/dist \
     MAILGREP_BIND=0.0.0.0:8025
-# All state lives in one directory: mount a named volume here (never a
-# Windows bind mount — see DESIGN.md §13).
+# All state lives in one directory: mount a named volume here (on WSL2,
+# never a bind mount from a Windows drive — small random I/O is ~10x slower
+# there, which is exactly the index and database workload).
 VOLUME /data
 EXPOSE 8025
 CMD ["mailgrep"]
