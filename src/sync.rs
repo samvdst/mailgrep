@@ -201,6 +201,22 @@ pub fn run_sync(
         }
     }
 
+    // Excluding a folder means its mail leaves the archive too: purge stored
+    // locations for excluded folders. A message that also lives elsewhere
+    // only loses this pointer; one that lived only there is removed.
+    for folder in handle.block_on(store.located_folders(account_id))? {
+        if excluded.iter().any(|e| e.eq_ignore_ascii_case(&folder)) {
+            prog.folder = format!("purging {folder}");
+            set_progress(prog.clone());
+            for id in handle.block_on(store.invalidate_folder(account_id, &folder))? {
+                index.delete_message(id)?;
+                outcome.removed += 1;
+                prog.removed += 1;
+            }
+            handle.block_on(store.delete_folder_state(account_id, &folder))?;
+        }
+    }
+
     // Layer-2 passes over the whole account
     let changed = handle.block_on(store.recompute_threads(account_id))?;
     for id in changed {

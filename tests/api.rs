@@ -420,6 +420,32 @@ async fn full_corpus_behaviour() {
 
     let (_, body) = req(r, "GET", "/api/status", None).await;
     assert_eq!(body["accounts"][0]["message_count"], 9);
+
+    // ---- excluding a folder purges its already-synced mail on next sync
+    let (s, _) = req(
+        r,
+        "PUT",
+        &format!("/api/accounts/{aid}/folders"),
+        Some(serde_json::json!({"excluded": ["Archives"]})),
+    )
+    .await;
+    assert_eq!(s, StatusCode::OK);
+    sync_account(&t.app, aid, None).await;
+    // photos + the moved newsletter lived only in Archives -> gone
+    let (_, body) = req(r, "GET", &search_uri("wanderwochenende", aid), None).await;
+    assert_eq!(body["total"], 0, "Archives-only mail must be purged: {body}");
+    let (_, body) = req(r, "GET", &search_uri("herbstaktion", aid), None).await;
+    assert_eq!(body["total"], 0, "{body}");
+    // the duplicate also lives in Sent -> survives, minus its Archives pointer
+    let (_, body) = req(r, "GET", &search_uri("steuererklaerung", aid), None).await;
+    assert_eq!(body["total"], 1, "{body}");
+    assert_eq!(
+        body["results"][0]["folders"],
+        serde_json::json!(["Sent"]),
+        "{body}"
+    );
+    let (_, body) = req(r, "GET", "/api/status", None).await;
+    assert_eq!(body["accounts"][0]["message_count"], 7);
 }
 
 #[tokio::test(flavor = "multi_thread")]

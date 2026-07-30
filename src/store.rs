@@ -651,6 +651,32 @@ impl Store {
         }
     }
 
+    /// Every folder that still has stored locations for this account.
+    pub async fn located_folders(&self, account_id: i64) -> Result<Vec<String>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT DISTINCT folder FROM locations WHERE account_id = ?",
+                params![account_id],
+            )
+            .await?;
+        let mut out = Vec::new();
+        while let Some(r) = rows.next().await? {
+            out.push(r.get(0)?);
+        }
+        Ok(out)
+    }
+
+    pub async fn delete_folder_state(&self, account_id: i64, folder: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "DELETE FROM folder_state WHERE account_id = ? AND folder = ?",
+                params![account_id, folder],
+            )
+            .await?;
+        Ok(())
+    }
+
     pub async fn folder_uidvalidity(&self, account_id: i64, folder: &str) -> Result<Option<u32>> {
         let mut rows = self
             .conn
