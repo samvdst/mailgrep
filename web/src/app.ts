@@ -297,6 +297,13 @@ window.addEventListener("popstate", () => {
   void runSearch();
 });
 
+// brand = home: full reset to the empty-query page
+(document.querySelector(".brand") as HTMLElement).onclick = () => {
+  if (isSettingsOpen()) closeSettings();
+  if (isDetailOpen()) closeDetail();
+  setQuery("");
+};
+
 // ---------- keyboard ----------
 
 document.addEventListener("keydown", (e) => {
@@ -312,6 +319,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (isSettingsOpen()) closeSettings();
     else if (isDetailOpen()) closeDetail();
+    else if (qInput.value.trim() !== "") setQuery("");
     else if (typing) t.blur();
     return;
   }

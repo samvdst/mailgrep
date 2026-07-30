@@ -109,7 +109,7 @@ code { font-family: var(--mono); background: var(--chip); padding: 1px 4px; bord
   top: 0;
   z-index: 20;
 }
-.brand { font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; }
+.brand { font-weight: 700; font-family: var(--mono); letter-spacing: -0.02em; cursor: pointer; }
 .searchwrap { flex: 1; position: relative; max-width: 720px; }
 #q { width: 100%; padding: 5px 10px; }
 #qerror {
