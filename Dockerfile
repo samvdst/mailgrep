@@ -14,12 +14,15 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 RUN cargo build --release
+# stage the OpenSSL runtime libs at an arch-neutral path so the same
+# Dockerfile builds on amd64 and arm64
+RUN mkdir /ssl-libs && cp /usr/lib/*-linux-gnu/libssl.so.3 /usr/lib/*-linux-gnu/libcrypto.so.3 /ssl-libs/
 
 # ---- runtime ----
 FROM debian:bookworm-slim
 # OpenSSL runtime + CA bundle lifted from the (same-release) build image.
-COPY --from=build /usr/lib/x86_64-linux-gnu/libssl.so.3 /usr/lib/x86_64-linux-gnu/
-COPY --from=build /usr/lib/x86_64-linux-gnu/libcrypto.so.3 /usr/lib/x86_64-linux-gnu/
+# /usr/lib is on the dynamic linker's default search path.
+COPY --from=build /ssl-libs/ /usr/lib/
 COPY --from=build /etc/ssl/certs /etc/ssl/certs
 WORKDIR /app
 COPY --from=build /app/target/release/mailgrep /usr/local/bin/mailgrep
