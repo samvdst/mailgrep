@@ -339,8 +339,8 @@ async fn trigger_sync(
 }
 
 /// Spawn a sync for an account unless one is already running. The running
-/// flag is claimed atomically and ALWAYS released when the task ends —
-/// including on panic — so a failed sync can never wedge future syncs.
+/// flag is claimed atomically and ALWAYS released when the task ends,
+/// including on panic, so a failed sync can never wedge future syncs.
 pub async fn start_sync(app: SharedApp, account_id: i64, max_per_folder: Option<usize>) -> Result<()> {
     let account = app.store.account(account_id).await?;
     {
@@ -586,7 +586,7 @@ fn empty_facets() -> Value {
     json!({ "senders": [], "orgs": [], "years": [], "exts": [], "folders": [] })
 }
 
-/// Facets computed over the (capped) top hits — top senders, top orgs, year
+/// Facets computed over the (capped) top hits: top senders, top orgs, year
 /// histogram, attachment types, folders.
 /// ponytail: facet base is the top 2000 hits, not the full match set; switch
 /// to fast-field collection if that approximation ever misleads.
@@ -830,7 +830,7 @@ async fn message_raw(State(app): State<SharedApp>, Path(id): Path<i64>) -> ApiRe
     for p in parts.iter().filter(|p| p.kind == "attach") {
         out.extend_from_slice(
             format!(
-                "\r\n--- attachment part {} ({}, {} bytes{}) — bytes not stored, fetched on demand ---\r\n",
+                "\r\n--- attachment part {} ({}, {} bytes{}); bytes not stored, fetched on demand ---\r\n",
                 p.path,
                 p.mime,
                 p.size,
@@ -893,7 +893,7 @@ async fn message_part(
             }
         }
         anyhow::bail!(
-            "message no longer on the server at any known location — check your mail client"
+            "message no longer on the server at any known location; check your mail client"
         )
     })
     .await

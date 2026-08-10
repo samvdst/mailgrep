@@ -8,7 +8,7 @@ RUN npm run build
 
 # ---- rust build ----
 # rust:bookworm (buildpack-deps) already carries pkg-config, OpenSSL headers
-# and CA certs — no apt needed, which also keeps rootless builds happy.
+# and CA certs, so no apt is needed, which also keeps rootless builds happy.
 FROM rust:1.97-bookworm AS build
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -28,7 +28,7 @@ ENV MAILGREP_DATA=/data \
     MAILGREP_WEB=/app/web/dist \
     MAILGREP_BIND=0.0.0.0:8025
 # All state lives in one directory: mount a named volume here (on WSL2,
-# never a bind mount from a Windows drive — small random I/O is ~10x slower
+# never a bind mount from a Windows drive, where small random I/O is ~10x slower
 # there, which is exactly the index and database workload).
 VOLUME /data
 EXPOSE 8025

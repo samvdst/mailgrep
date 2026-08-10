@@ -159,7 +159,7 @@ export function esc(s: string | null | undefined): string {
 
 /** Format a UTC unix timestamp in the message's original offset: "2021-03-10 09:14". */
 export function fmtDate(secs: number | null | undefined, offsetMins = 0): string {
-  if (secs == null) return "—";
+  if (secs == null) return "-";
   const d = new Date((secs + offsetMins * 60) * 1000);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;

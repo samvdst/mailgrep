@@ -66,14 +66,14 @@ function renderAccountOptions(): void {
 
 function renderAccounts(): void {
   if (!accounts.length) {
-    acctList.innerHTML = '<div class="dim">No accounts yet — add one below.</div>';
+    acctList.innerHTML = '<div class="dim">No accounts yet. Add one below.</div>';
     return;
   }
   acctList.innerHTML = accounts
     .map((a) => {
       const p = a.progress;
       const prog = p?.running
-        ? `<div class="acct-prog">syncing <b>${esc(p.folder) || "…"}</b> — ${p.processed}/${p.discovered}${p.failed ? ` · ${p.failed} failed` : ""}</div>`
+        ? `<div class="acct-prog">syncing <b>${esc(p.folder) || "…"}</b>: ${p.processed}/${p.discovered}${p.failed ? ` · ${p.failed} failed` : ""}</div>`
         : p?.error
           ? `<div class="err">${esc(p.error)}</div>`
           : "";
@@ -196,7 +196,7 @@ async function toggleImages(id: number, card: HTMLElement, forceOpen = false): P
               `<div class="imgallow"><span>${esc(a.sender)}</span> <span class="dim">${fmtLocal(a.at)}</span> <button data-act="revokeimg" data-sender="${esc(a.sender)}" class="danger" title="block again">×</button></div>`,
           )
           .join("")
-      : '<div class="dim">No senders allowed — remote images are blocked everywhere.</div>';
+      : '<div class="dim">No senders allowed. Remote images are blocked everywhere.</div>';
     box.hidden = false;
   } catch (e) {
     showErr(sErr, (e as Error).message);

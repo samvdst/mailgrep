@@ -12,7 +12,7 @@ security problems before a fix is released.
 
 ## Design notes relevant to security
 
-- mailgrep is **read-only against IMAP** — it never writes to your mailbox.
+- mailgrep is **read-only against IMAP**: it never writes to your mailbox.
 - v1 ships **without authentication**: the network is the trust boundary.
   Run it only on a private network (Tailscale, WireGuard, LAN). Do not
   expose it to the public internet.

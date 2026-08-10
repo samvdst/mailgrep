@@ -18,7 +18,7 @@ use tantivy::schema::{
 };
 use tantivy::{Index, IndexReader, IndexWriter, TantivyDocument, Term};
 
-/// Boosts are configuration, not constants — they need tuning on the real corpus.
+/// Boosts are configuration, not constants; they need tuning on the real corpus.
 #[derive(Debug, Clone)]
 pub struct RankConfig {
     pub fresh_boost: f32,
@@ -371,7 +371,7 @@ impl AccountIndex {
                 )),
                 FilterField::Folder => {
                     let lc = v.to_ascii_lowercase();
-                    // exact folder, or any subfolder — both '/' and '.' occur
+                    // exact folder, or any subfolder; both '/' and '.' occur
                     // as IMAP hierarchy delimiters in the wild
                     let mut subs: Vec<(Occur, Box<dyn Query>)> = vec![(
                         Occur::Should,

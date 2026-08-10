@@ -1,16 +1,16 @@
 # mailgrep
 
 [![ci](https://github.com/samvdst/mailgrep/actions/workflows/ci.yml/badge.svg)](https://github.com/samvdst/mailgrep/actions/workflows/ci.yml)
-[![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
+[![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![ghcr](https://img.shields.io/badge/ghcr.io-samvdst%2Fmailgrep-24292f?logo=github)](https://github.com/samvdst/mailgrep/pkgs/container/mailgrep)
 
 Self-hosted search over IMAP mail. Fast, accurate, and honest about what it knows.
 
 Your mail clients are for reading and acting on mail. mailgrep does the one thing
-none of them do well: **find things** — in an archive spanning years, folders, and
+none of them do well: **find things** in an archive spanning years, folders, and
 the accumulated damage of clients that disagree about dates and folder names.
 
-![mailgrep — search, thread view and message detail](docs/screenshots/search-dark.png)
+![mailgrep: search, thread view and message detail](docs/screenshots/search-dark.png)
 
 <details>
 <summary>More screenshots (light mode, date-skew flagging)</summary>
@@ -23,17 +23,17 @@ the accumulated damage of clients that disagree about dates and folder names.
 - **One search box.** Free text plus filters in a single query string:
   `boiler landlord from:@immo.ch after:2021-01 has:attachment`
 - **Correct dates.** Each message's date is derived from its `Received:` headers
-  with corroboration voting across sources — folder moves and account imports
+  with corroboration voting across sources, so folder moves and account imports
   can't corrupt it. Messages whose stored date disagrees are flagged (`dateskew:`).
 - **Fresh text outranks quoted history.** Quoted replies and signatures are
   segmented out and indexed at low weight, so you land on the message where
   something was *said*, not the twentieth reply quoting it.
-- **Threads from headers only** (`References`/`In-Reply-To`, JWZ-style) — never
+- **Threads from headers only** (`References`/`In-Reply-To`, JWZ-style), never
   fuzzy subject matching, so unrelated "Rechnung" mails are never merged.
 - **Contacts and organisations** derived from addresses; merge the several
   addresses one person has used (undoable, survives rebuilds).
 - **Read-only.** mailgrep never writes to your mailbox. Ever.
-- **Text-first storage.** Headers and text are stored locally (~2–4 GB for an
+- **Text-first storage.** Headers and text are stored locally (~2-4 GB for an
   11 GB mailbox); attachments are fetched from IMAP on demand when you click.
 - **Safe rendering.** Sanitised HTML in a sandboxed iframe; remote images blocked
   by default (tracking pixels stay dark), per-sender allowances you can revoke.
@@ -41,14 +41,14 @@ the accumulated damage of clients that disagree about dates and folder names.
 ## Self-hosting (Docker)
 
 Requirements: Docker (or Podman) with compose, and an always-on box. mailgrep
-has **no authentication** — the network is the trust boundary. Run it on a
+has **no authentication**; the network is the trust boundary. Run it on a
 private network (Tailscale, WireGuard, LAN) and never expose it publicly.
 
 ```sh
 mkdir mailgrep && cd mailgrep
 curl -O https://raw.githubusercontent.com/samvdst/mailgrep/main/docker-compose.yml
 
-# The key that encrypts your IMAP credentials at rest. Generate once, keep it —
+# The key that encrypts your IMAP credentials at rest. Generate once and keep it:
 # losing it means re-entering your accounts.
 echo "MAILGREP_KEY=$(openssl rand -hex 32)" > .env
 
@@ -59,30 +59,30 @@ docker compose up -d      # pulls ghcr.io/samvdst/mailgrep
 
 Open `http://<host>:8025`, then:
 
-1. **⚙ Settings → Add IMAP account** — host, port (993/TLS), username, password.
+1. **⚙ Settings → Add IMAP account**: host, port (993/TLS), username, password.
    Credentials are verified against the server before being stored, and stored
    encrypted with `MAILGREP_KEY`.
-2. **Folders…** — exclude Junk/Trash before the first big sync. (Excluding a
+2. **Folders…**: exclude Junk/Trash before the first big sync. (Excluding a
    folder later also purges its already-ingested mail on the next sync.)
-3. **Sync now** — or **Bounded sync…** first to ingest the newest N per folder
+3. **Sync now**, or **Bounded sync…** first to ingest the newest N per folder
    and get a feel before committing to the full archive. Ingestion is
    newest-first and resumable: reboots cost seconds, not a re-download.
 
-All state lives in the `mailgrep-data` volume — one directory to back up or
+All state lives in the `mailgrep-data` volume: one directory to back up or
 migrate. Scheduled syncs run per account on a configurable interval (default
 hourly; set to 0 for manual-only).
 
 ### WSL2 note
 
 If the host is Windows, keep the volume on the WSL2 ext4 filesystem (named
-volumes do this by default). Never bind-mount from `/mnt/c` — small random I/O
+volumes do this by default). Never bind-mount from `/mnt/c`: small random I/O
 crosses a translation layer roughly 10× slower, which is exactly the workload
 of the index and database. Cap WSL2 memory in `.wslconfig`; indexing will use
 whatever it's allowed.
 
 ## Query grammar
 
-Free text and operators mix in one string. Every query is a URL — bookmark it.
+Free text and operators mix in one string. Every query is a URL, so bookmark it.
 
 | | |
 |---|---|
@@ -96,7 +96,7 @@ Free text and operators mix in one string. Every query is a URL — bookmark it.
 | `dateskew:true` | messages whose stored date disagrees with the derived one |
 | `has:attachment` | attachment presence |
 | `ext:pdf,jpg` | attachment file extension (comma = OR) |
-| `attachment:image` | attachment MIME category — works when extensions lie |
+| `attachment:image` | attachment MIME category, works when extensions lie |
 | `filename:vertrag` | attachment filename substring |
 | `"exact phrase"` | matched exactly, never fuzzed |
 | `-term` / `-folder:X` | negation |
@@ -109,12 +109,12 @@ search and display.
 
 Two layers, one volume:
 
-- **Layer 1 — raw.** What IMAP said, never corrected: headers, text-part bytes,
+- **Layer 1 (raw).** What IMAP said, never corrected: headers, text-part bytes,
   MIME structure, folder/UID locations, and attachment *metadata* (name, type,
-  size — never the bytes). Lives in `mailgrep.db` (SQLite-compatible libSQL).
-- **Layer 2 — derived.** Canonical dates, threads, contacts, fresh/quoted
+  size, never the bytes). Lives in `mailgrep.db` (SQLite-compatible libSQL).
+- **Layer 2 (derived).** Canonical dates, threads, contacts, fresh/quoted
   segmentation, and the Tantivy full-text index (`index/<account>/`). Fully
-  rebuildable from layer 1 — **Rebuild derived data** in settings re-runs the
+  rebuildable from layer 1: **Rebuild derived data** in settings re-runs the
   engine over stored mail with no network traffic. Your decisions (contact
   merges, image allowances) are keyed on addresses and survive every rebuild.
 
@@ -126,7 +126,7 @@ rather than pretending to a unified relevance.
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `MAILGREP_KEY` | – | 64 hex chars; encrypts IMAP credentials at rest (required to add accounts) |
+| `MAILGREP_KEY` | - | 64 hex chars; encrypts IMAP credentials at rest (required to add accounts) |
 | `MAILGREP_DATA` | `/data` (image) | state directory |
 | `MAILGREP_BIND` | `0.0.0.0:8025` | listen address |
 | `MAILGREP_WEB` | `/app/web/dist` | SPA assets |
@@ -134,10 +134,10 @@ rather than pretending to a unified relevance.
 | `MAILGREP_BOOST_QUOTED` | `0.25` | ranking boost: quoted history |
 | `MAILGREP_BOOST_SUBJECT` | `1.8` | ranking boost: subject |
 | `MAILGREP_BOOST_EXACT` | `2.0` | exact-match boost over fuzzy |
-| `MAILGREP_FREEMAIL_EXTRA` | – | comma-separated domains to add to the freemail list (never become organisations) |
-| `MAILGREP_ROLE_EXTRA` | – | comma-separated localparts flagged as role addresses (`noreply`-style) |
-| `MAILGREP_SUBJECT_PREFIXES_EXTRA` | – | comma-separated reply/forward prefixes for your locale (e.g. `odp,ynt`) |
-| `MAILGREP_QUOTE_MARKERS_EXTRA` | – | `\|`-separated "everything below is quoted" line prefixes |
+| `MAILGREP_FREEMAIL_EXTRA` | - | comma-separated domains to add to the freemail list (never become organisations) |
+| `MAILGREP_ROLE_EXTRA` | - | comma-separated localparts flagged as role addresses (`noreply`-style) |
+| `MAILGREP_SUBJECT_PREFIXES_EXTRA` | - | comma-separated reply/forward prefixes for your locale (e.g. `odp,ynt`) |
+| `MAILGREP_QUOTE_MARKERS_EXTRA` | - | `\|`-separated "everything below is quoted" line prefixes |
 | `MAILGREP_DATE_AGREE_HOURS` | `48` | window within which two date sources corroborate each other |
 | `MAILGREP_SKEW_HOURS` | `24` | canonical-vs-stored difference that flags `dateskew:` |
 | `MAILGREP_DATE_FLOOR_YEAR` | `1990` | dates before this year are implausible |
@@ -172,12 +172,12 @@ exported to TypeScript via `ts-rs` (`cargo test` regenerates `bindings/`).
 ## Non-goals (v1)
 
 No IMAP writes (skewed dates are flagged, never "repaired"), no OCR or
-attachment content indexing (Paperless-ngx owns that), no LLM query parsing,
-no auth (private network only), no real-time IDLE sync. Semantic search is
-designed for as a future separate mode — tables exist, nothing is generated.
+attachment content indexing (use something like Paperless-ngx for that), no
+LLM query parsing, no auth (private network only), no real-time IDLE sync.
+Semantic search is designed for as a future separate mode: the tables exist,
+nothing is generated yet.
 
 ## License
 
-[AGPL-3.0](LICENSE). Self-host freely; if you offer mailgrep as a service,
-your modifications must be shared under the same license. See
-`CONTRIBUTING.md` and `SECURITY.md`.
+[MIT](LICENSE). Do whatever you want with it. See `CONTRIBUTING.md` and
+`SECURITY.md`.

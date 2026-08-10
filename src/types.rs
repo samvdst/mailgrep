@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// Layer 1: what the source gave us, never corrected.
 /// Text-first fetch means we hold headers + text part entities, plus
-/// attachment metadata from the structure — never attachment bytes.
+/// attachment metadata from the structure, never attachment bytes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawMessage {
     /// Full RFC822 header block bytes.

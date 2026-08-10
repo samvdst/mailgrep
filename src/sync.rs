@@ -1,5 +1,5 @@
 //! Sync engine: reconcile a MailSource against the store, newest-first,
-//! batched. The store writes themselves are the checkpoint — a killed run
+//! batched. The store writes themselves are the checkpoint: a killed run
 //! resumes by re-diffing enumerated UIDs against stored locations, so a
 //! reboot costs one enumeration, not a re-download.
 
@@ -242,7 +242,7 @@ pub fn run_sync(
     Ok(outcome)
 }
 
-/// Rebuild all derived data from layer 1 — no network. User decisions
+/// Rebuild all derived data from layer 1, no network. User decisions
 /// (merges, image allowances) are keyed on addresses and untouched.
 pub async fn rebuild_account(store: &Store, indexes: &Indexes, account_id: i64) -> Result<usize> {
     let now = std::time::SystemTime::now()

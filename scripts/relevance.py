@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Relevance harness — relevance is measured, not asserted.
+"""Relevance harness: relevance is measured, not asserted.
 
 Reads a TSV of `query<TAB>expected-identity` pairs drawn from the real
 archive (private, not committed), runs each against a live mailgrep, and
-reports hit-rate@k and mean reciprocal rank. Never fails a build — it tells
+reports hit-rate@k and mean reciprocal rank. Never fails a build; it tells
 you whether a boost change made things better or worse.
 
 Usage: scripts/relevance.py queries.tsv [--base http://localhost:8025] [--account 1] [--k 10]

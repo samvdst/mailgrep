@@ -177,7 +177,7 @@ pub fn eml_part_contents(bytes: &[u8], path: &str) -> Result<Vec<u8>> {
 
 /// Folder per subdirectory of root (files at top level land in INBOX).
 /// UIDs are stable hashes of the filename, so deleting or moving one file
-/// never renumbers the others — mirroring real IMAP UID semantics.
+/// never renumbers the others, mirroring real IMAP UID semantics.
 pub struct FixtureSource {
     root: PathBuf,
 }

@@ -69,7 +69,7 @@ THREADS = [
         (0, "Bien recu, nous deposons la requete lundi.", 8),
     ]),
     ("Search index performance review", [11, 5], [
-        (0, "Sam — profiled the new index build: 40% faster after the mmap change, but memory spikes during merges. Thoughts?", 0),
+        (0, "Sam, I profiled the new index build: 40% faster after the mmap change, but memory spikes during merges. Thoughts?", 0),
         (1, "We hit the same thing at Nimbus; capping merge threads helped.", 1),
         (-1, "Capping at 2 merge threads now, spike is gone. Shipping it.", 2),
     ]),
@@ -78,16 +78,16 @@ THREADS = [
 ONEOFFS = [
     (0, "Besichtigungstermin bestaetigt", "Der Termin fuer die Wohnungsuebergabe ist am Freitag 14:00 bestaetigt."),
     (1, "Devis renovation cuisine", "Bonjour Sam,\n\nVous trouverez ci-joint le devis pour la renovation de la cuisine.\n\nCordialement,\nMarc"),
-    (4, "Fotos vom Wochenende", "Hoi Sam!\n\nDie Fotos vom Wanderwochenende sind online — die vom Gipfel sind der Hammer."),
+    (4, "Fotos vom Wochenende", "Hoi Sam!\n\nDie Fotos vom Wanderwochenende sind online, die vom Gipfel sind der Hammer."),
     (5, "Standup notes + search latency", "Notes from today: p99 search latency down to 8ms after the index rebuild. Shipping Thursday."),
     (6, "Preventivo sito web", "Ciao Sam,\n\nin allegato il preventivo per il nuovo sito. Fammi sapere!\n\nElena"),
     (3, "Rechnung Boiler Reparatur", "Guten Tag\n\nDie Rechnung fuer die Boiler-Reparatur vom Montag liegt bei. Der Klempner musste das Ventil komplett ersetzen.\n\nJonas Weber"),
     (8, "Zaehlerstand Ablesung", "Sehr geehrter Kunde,\n\nbitte teilen Sie uns bis Ende Monat Ihren aktuellen Zaehlerstand mit.\n\nStadtwerke Muster"),
     (2, "Fristerstreckung Steuern genehmigt", "Guten Tag Herr Demo\n\nDie Fristerstreckung bis 30. September wurde genehmigt.\n\nLisa Brunner"),
-    (7, "Design review Thursday?", "Hey — can we move the design review to Thursday 15:00? The new facet rail mockups are ready."),
+    (7, "Design review Thursday?", "Hey, can we move the design review to Thursday 15:00? The new facet rail mockups are ready."),
     (9, "Winterreifen einlagern", "Hoi Sam\n\nDeine Winterreifen sind eingelagert, Abholung ab Oktober jederzeit moeglich."),
     (10, "Convention signee recue", "Cher Monsieur,\n\nNous confirmons la reception de la convention signee.\n\nMaitre Fontaine"),
-    (11, "Benchmark numbers look great", "The comparison table is done — we beat the baseline on every recall metric. Draft attached tomorrow."),
+    (11, "Benchmark numbers look great", "The comparison table is done, we beat the baseline on every recall metric. Draft attached tomorrow."),
 ]
 
 

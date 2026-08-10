@@ -41,12 +41,12 @@ export async function openDetail(id: number): Promise<void> {
 }
 
 function addrChips(list: Addr[]): string {
-  if (!list.length) return '<span class="dim">—</span>';
+  if (!list.length) return '<span class="dim">-</span>';
   return list
     .map((a) => {
       const label = esc(addrLabel(a));
       if (!a.email) return `<span class="addr noclick">${label}</span>`;
-      return `<button class="addr" data-email="${esc(a.email)}" title="${esc(a.email)} — add contact: filter">${label}</button>`;
+      return `<button class="addr" data-email="${esc(a.email)}" title="${esc(a.email)} (add contact: filter)">${label}</button>`;
     })
     .join(" ");
 }

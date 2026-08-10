@@ -5,7 +5,7 @@ use mail_parser::{HeaderValue, MessageParser, MimeHeaders};
 use sha2::{Digest, Sha256};
 
 /// normalize(), but a panic on one adversarial message becomes an Err the
-/// sync loop can record and skip — one malformed message must never abort
+/// sync loop can record and skip; one malformed message must never abort
 /// the run.
 pub fn normalize_catch(raw: &RawMessage, now: i64) -> anyhow::Result<NormalizedMessage> {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| normalize(raw, now))).map_err(|p| {
@@ -231,9 +231,9 @@ fn plausible(ts: i64, now: i64) -> bool {
 }
 
 /// Corroboration voting: three witnesses, and when two agree (within 48h)
-/// they outvote the third. Catches both known liars — INTERNALDATE reset by
+/// they outvote the third. Catches both known liars: INTERNALDATE reset by
 /// client moves (Received+Date agree, outvote it) and Received re-stamped by
-/// account imports (Date+INTERNALDATE agree, outvote it) — without handing
+/// account imports (Date+INTERNALDATE agree, outvote it), without handing
 /// authority to the sender-controlled Date: header alone, which an oldest-
 /// wins rule would.
 pub fn derive_date(

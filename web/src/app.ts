@@ -107,7 +107,7 @@ function commit(): void {
   void runSearch();
 }
 
-/** Append a facet/filter term to the current query — never replaces it. */
+/** Append a facet/filter term to the current query, never replaces it. */
 export function appendQuery(term: string): void {
   const cur = qInput.value.trim();
   if (cur.split(/\s+/).includes(term)) return;
