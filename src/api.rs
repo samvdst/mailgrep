@@ -540,6 +540,11 @@ async fn search(
         });
     }
 
+    // Relevance scores are account-local, but dates are directly comparable.
+    if opts.sort_by_date {
+        results.sort_by(|a, b| b.date.cmp(&a.date));
+    }
+
     // Facets over the top hits of every selected account.
     let mut facet_ids: Vec<i64> = Vec::new();
     for (_, _, out) in &per_account {
