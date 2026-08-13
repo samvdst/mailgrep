@@ -59,7 +59,7 @@ export const Route = createFileRoute("/_search")({
     ...(typeof search.account === "string" && search.account !== "all" ? { account: search.account } : {}),
     ...(search.sort === "date" ? { sort: "date" as const } : {}),
   }),
-  loaderDeps: ({ search }) => ({ q: search.q ?? "", account: search.account ?? "all", sort: search.sort ?? "relevance" }),
+  loaderDeps: ({ search }) => ({ q: search.q ?? "", account: search.account ?? "all", sort: search.sort ?? useUiStore.getState().sortPreference }),
   loader: ({ context, deps }) => context.queryClient.prefetchInfiniteQuery(searchQuery(deps.q, deps.account, deps.sort)),
   component: SearchShell,
 });
@@ -69,7 +69,9 @@ function SearchShell() {
   const navigate = useNavigate({ from: Route.fullPath });
   const q = search.q ?? "";
   const account = search.account ?? "all";
-  const sort = search.sort ?? "relevance";
+  const sortPreference = useUiStore((state) => state.sortPreference);
+  const setSortPreference = useUiStore((state) => state.setSortPreference);
+  const sort = search.sort ?? sortPreference;
   const query = useInfiniteQuery(searchQuery(q, account, sort));
   const pages = query.data?.pages;
   const firstPage = pages?.[0];
@@ -145,7 +147,11 @@ function SearchShell() {
         sort={sort}
         accounts={firstPage?.accounts ?? []}
         onAccount={(value) => void navigate({ search: (old) => ({ ...old, account: value === "all" ? undefined : value }) })}
-        onSort={() => void navigate({ search: (old) => ({ ...old, sort: sort === "date" ? undefined : "date" }) })}
+        onSort={() => {
+          const next = sort === "date" ? "relevance" : "date";
+          setSortPreference(next);
+          void navigate({ search: (old) => ({ ...old, sort: next === "date" ? "date" : undefined }) });
+        }}
         facets={firstPage?.facets}
         updateQuery={updateQuery}
       />
@@ -207,21 +213,21 @@ function Header({ draft, setDraft, searchRef, account, sort, accounts, onAccount
   return (
     <header className="relative z-30 shrink-0 border-b bg-background/88 px-3 py-2 backdrop-blur-xl md:px-4">
       <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-2">
-        <Link to="/" search={{}} className="group mr-1 flex h-9 items-center gap-2 rounded-md px-1.5 font-mono text-sm font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring">
-          <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform group-hover:-rotate-3"><Inbox className="size-4" /></span>
+        <Link to="/" search={{}} className="group order-2 mr-1 flex h-9 items-center gap-2 rounded-md px-1.5 font-mono text-sm font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring md:order-none">
+          <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-transform group-hover:-rotate-3"><Inbox className="size-4" /></span>
           <span className="hidden sm:inline">mailgrep</span>
         </Link>
-        <div className="order-3 flex w-full min-w-0 flex-1 items-center rounded-xl border border-input bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20 md:order-none md:w-auto">
+        <div className="order-1 flex w-full basis-full items-center rounded-xl border border-input bg-card shadow-sm transition-shadow focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 md:order-none md:min-w-64 md:basis-0 md:flex-1">
           <Search className="ml-3 size-4 shrink-0 text-muted-foreground" />
           <input
             ref={searchRef}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             type="search"
-            placeholder="Search messages or try from:, date:, has:attachment…"
+            placeholder="Search mail…"
             autoComplete="off"
             spellCheck={false}
-            className="h-10 min-w-0 flex-1 bg-transparent px-3 text-sm outline-none placeholder:text-muted-foreground"
+            className="h-11 min-w-0 flex-1 bg-transparent px-3 text-base outline-none placeholder:text-muted-foreground md:h-10 md:text-sm"
             aria-label="Search archive"
           />
           {draft ? <button className="mr-1 rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-foreground" onClick={() => setDraft("")} aria-label="Clear search"><X className="size-4" /></button> : <kbd className="mr-2 hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-flex"><Command className="mr-0.5 size-3" />/</kbd>}
@@ -229,20 +235,20 @@ function Header({ draft, setDraft, searchRef, account, sort, accounts, onAccount
         <select
           value={account}
           onChange={(event) => onAccount(event.target.value)}
-          className="h-9 max-w-28 rounded-md border bg-background px-2 text-sm sm:max-w-40 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="order-2 h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring sm:max-w-44 sm:flex-none md:order-none"
           aria-label="Account"
         >
           <option value="all">All accounts</option>
           {accounts.map((item) => <option key={item.id} value={String(item.id)}>{item.name}</option>)}
         </select>
-        <Button variant="outline" size="sm" onClick={onSort} title={`Sort by ${sort === "date" ? "relevance" : "date"}`}>
+        <Button variant="outline" size="sm" className="order-2 md:order-none" onClick={onSort} title={`Sort by ${sort === "date" ? "relevance" : "date"}`}>
           {sort === "date" ? <ArrowDownWideNarrow /> : <ArrowUpDown />}<span className="hidden sm:inline">{sort === "date" ? "Newest" : "Relevant"}</span>
         </Button>
-        <Button variant="outline" size="icon" className="lg:hidden" onClick={() => setFacetsOpen(true)} aria-label="Open filters"><Filter /></Button>
-        <Button variant="ghost" size="icon" className="hidden sm:inline-flex" onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")} title={`Theme: ${theme}`} aria-label="Change theme">
+        <Button variant="outline" size="icon" className="order-2 lg:hidden" onClick={() => setFacetsOpen(true)} aria-label="Open filters"><Filter /></Button>
+        <Button variant="ghost" size="icon" className="order-2 hidden sm:inline-flex md:order-none" onClick={() => setTheme(theme === "dark" ? "light" : theme === "light" ? "system" : "dark")} title={`Theme: ${theme}`} aria-label="Change theme">
           {theme === "dark" ? <Moon /> : <Sun />}
         </Button>
-        <Button variant="ghost" size="icon" asChild><Link to="/settings" search={{}} aria-label="Settings"><Settings /></Link></Button>
+        <Button variant="ghost" size="icon" className="order-2 md:order-none" asChild><Link to="/settings" search={{}} aria-label="Settings"><Settings /></Link></Button>
       </div>
       <Sheet open={facetsOpen} onOpenChange={setFacetsOpen}>
         <SheetContent side="left">
@@ -325,24 +331,21 @@ function Results({ rows, total, crossAccount, queryText, loading, fetching, hasA
             onMouseEnter={() => void queryClient.prefetchQuery({ queryKey: ["message", row.id], queryFn: () => api(`/api/message/${row.id}`), staleTime: 60_000 })}
             className={cn("group block border-l-2 border-l-transparent px-4 outline-none [content-visibility:auto] [contain-intrinsic-size:auto_104px] transition-colors hover:bg-accent/45 focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring", density === "compact" ? "py-2" : "py-3", (activeIndex === index || selectedId === row.id) && "border-l-primary bg-accent/65")}
           >
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <h3 className="truncate text-sm font-medium tracking-[-0.01em]">{row.subject || "(no subject)"}</h3>
-                  {row.has_attach && <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />}
-                  {row.thread_size > 1 && <Badge variant="outline">{row.thread_size} in thread</Badge>}
-                </div>
-                <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                  <span className="truncate text-foreground/75">{addressLabel(row.from[0])}</span>
-                  {row.folders.slice(0, 2).map((folder) => <Badge key={folder} variant="secondary" className="max-w-28 truncate">{folder}</Badge>)}
-                  {crossAccount && <Badge variant="outline">{row.account}</Badge>}
-                  {row.skew && <Badge variant="destructive"><TriangleAlert className="size-3" />date</Badge>}
-                </div>
-                {/* Tantivy returns escaped text with server-owned <mark> highlights. */}
-                <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-muted-foreground [&_mark]:rounded-sm [&_mark]:bg-primary/15 [&_mark]:px-0.5 [&_mark]:text-foreground" dangerouslySetInnerHTML={{ __html: row.snippet }} />
-              </div>
-              <time className="shrink-0 font-mono text-[10px] text-muted-foreground sm:text-xs">{formatDate(row.date, row.date_offset_mins)}</time>
+            <h3 className="line-clamp-2 text-[15px] font-semibold leading-5 tracking-[-0.015em] sm:text-base">{row.subject || "(no subject)"}</h3>
+            <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span className="break-words font-medium text-foreground/80">{addressLabel(row.from[0])}</span>
+              <span aria-hidden="true" className="text-border">•</span>
+              <time className="font-mono text-[11px]">{formatDate(row.date, row.date_offset_mins)}</time>
             </div>
+            <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5">
+              {row.has_attach && <Badge variant="outline"><Paperclip className="size-3" />attachment</Badge>}
+              {row.thread_size > 1 && <Badge variant="outline">{row.thread_size} in thread</Badge>}
+              {row.folders.slice(0, 2).map((folder) => <Badge key={folder} variant="secondary" className="max-w-full">{folder}</Badge>)}
+              {crossAccount && <Badge variant="outline" className="max-w-full">{row.account}</Badge>}
+              {row.skew && <Badge variant="destructive"><TriangleAlert className="size-3" />date differs</Badge>}
+            </div>
+            {/* Tantivy returns escaped text with server-owned <mark> highlights. */}
+            <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground [&_mark]:rounded-sm [&_mark]:bg-primary/18 [&_mark]:px-0.5 [&_mark]:text-foreground" dangerouslySetInnerHTML={{ __html: row.snippet }} />
           </Link>
         ))}
       </div>
