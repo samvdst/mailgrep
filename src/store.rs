@@ -2,9 +2,10 @@
 //! Layer 2 is rebuildable from layer 1; user decisions (merges, image
 //! allowances) are keyed on addresses and survive rebuilds.
 
+use crate::api_types::{Contact, ImageAllowance, MergeOperation, OrgSummary, SyncLog};
 use crate::types::*;
 use anyhow::{Context, Result};
-use libsql::{params, Connection};
+use libsql::{Connection, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -409,7 +410,13 @@ impl Store {
                         .execute(
                             "INSERT INTO parts (message_id, path, kind, mime, size, content)
                              VALUES (?, ?, 'text', ?, ?, ?)",
-                            params![id, tp.path.clone(), mime, tp.entity.len() as i64, tp.entity.clone()],
+                            params![
+                                id,
+                                tp.path.clone(),
+                                mime,
+                                tp.entity.len() as i64,
+                                tp.entity.clone()
+                            ],
                         )
                         .await?;
                 }
@@ -488,7 +495,11 @@ impl Store {
         Ok(out)
     }
 
-    pub async fn thread_messages(&self, account_id: i64, thread_id: &str) -> Result<Vec<StoredMessage>> {
+    pub async fn thread_messages(
+        &self,
+        account_id: i64,
+        thread_id: &str,
+    ) -> Result<Vec<StoredMessage>> {
         let mut rows = self
             .conn
             .query(
@@ -507,7 +518,11 @@ impl Store {
         Ok(out)
     }
 
-    pub async fn thread_sizes(&self, account_id: i64, thread_ids: &[String]) -> Result<HashMap<String, i64>> {
+    pub async fn thread_sizes(
+        &self,
+        account_id: i64,
+        thread_ids: &[String],
+    ) -> Result<HashMap<String, i64>> {
         let mut out = HashMap::new();
         if thread_ids.is_empty() {
             return Ok(out);
@@ -601,7 +616,10 @@ impl Store {
     ) -> Result<()> {
         // A relocation replaces all stale pointers with the fresh one.
         self.conn
-            .execute("DELETE FROM locations WHERE message_id = ?", params![message_id])
+            .execute(
+                "DELETE FROM locations WHERE message_id = ?",
+                params![message_id],
+            )
             .await?;
         self.conn
             .execute(
@@ -631,7 +649,12 @@ impl Store {
 
     /// Remove one location; if the message has no locations left, delete it
     /// entirely and report its id so the index entry can be removed too.
-    pub async fn remove_location(&self, account_id: i64, folder: &str, uid: u32) -> Result<Option<i64>> {
+    pub async fn remove_location(
+        &self,
+        account_id: i64,
+        folder: &str,
+        uid: u32,
+    ) -> Result<Option<i64>> {
         let mut rows = self
             .conn
             .query(
@@ -651,12 +674,19 @@ impl Store {
             .await?;
         let mut rows = self
             .conn
-            .query("SELECT COUNT(*) FROM locations WHERE message_id = ?", params![mid])
+            .query(
+                "SELECT COUNT(*) FROM locations WHERE message_id = ?",
+                params![mid],
+            )
             .await?;
         let cnt: i64 = rows.next().await?.context("count")?.get(0)?;
         if cnt == 0 {
-            self.conn.execute("DELETE FROM parts WHERE message_id = ?", params![mid]).await?;
-            self.conn.execute("DELETE FROM messages WHERE id = ?", params![mid]).await?;
+            self.conn
+                .execute("DELETE FROM parts WHERE message_id = ?", params![mid])
+                .await?;
+            self.conn
+                .execute("DELETE FROM messages WHERE id = ?", params![mid])
+                .await?;
             Ok(Some(mid))
         } else {
             Ok(None)
@@ -703,7 +733,12 @@ impl Store {
         }
     }
 
-    pub async fn set_folder_uidvalidity(&self, account_id: i64, folder: &str, v: u32) -> Result<()> {
+    pub async fn set_folder_uidvalidity(
+        &self,
+        account_id: i64,
+        folder: &str,
+        v: u32,
+    ) -> Result<()> {
         self.conn
             .execute(
                 "INSERT INTO folder_state (account_id, folder, uidvalidity, updated_at)
@@ -719,7 +754,11 @@ impl Store {
     /// Drop all locations for a folder (UIDVALIDITY change). Messages that
     /// lose their last location are deleted; their ids are returned.
     pub async fn invalidate_folder(&self, account_id: i64, folder: &str) -> Result<Vec<i64>> {
-        let uids: Vec<u32> = self.folder_uids(account_id, folder).await?.into_keys().collect();
+        let uids: Vec<u32> = self
+            .folder_uids(account_id, folder)
+            .await?
+            .into_keys()
+            .collect();
         let mut deleted = Vec::new();
         for uid in uids {
             if let Some(id) = self.remove_location(account_id, folder, uid).await? {
@@ -777,7 +816,7 @@ impl Store {
         Ok(())
     }
 
-    pub async fn sync_logs(&self, account_id: i64, limit: i64) -> Result<Vec<serde_json::Value>> {
+    pub async fn sync_logs(&self, account_id: i64, limit: i64) -> Result<Vec<SyncLog>> {
         let mut rows = self
             .conn
             .query(
@@ -788,15 +827,15 @@ impl Store {
             .await?;
         let mut out = Vec::new();
         while let Some(r) = rows.next().await? {
-            out.push(serde_json::json!({
-                "started_at": r.get::<i64>(0)?,
-                "finished_at": r.get::<Option<i64>>(1)?,
-                "new": r.get::<i64>(2)?,
-                "removed": r.get::<i64>(3)?,
-                "failed": r.get::<i64>(4)?,
-                "status": r.get::<String>(5)?,
-                "detail": r.get::<Option<String>>(6)?,
-            }));
+            out.push(SyncLog {
+                started_at: r.get(0)?,
+                finished_at: r.get(1)?,
+                new: r.get(2)?,
+                removed: r.get(3)?,
+                failed: r.get(4)?,
+                status: r.get(5)?,
+                detail: r.get(6)?,
+            });
         }
         Ok(out)
     }
@@ -804,7 +843,10 @@ impl Store {
     pub async fn message_count(&self, account_id: i64) -> Result<i64> {
         let mut rows = self
             .conn
-            .query("SELECT COUNT(*) FROM messages WHERE account_id = ?", params![account_id])
+            .query(
+                "SELECT COUNT(*) FROM messages WHERE account_id = ?",
+                params![account_id],
+            )
             .await?;
         Ok(rows.next().await?.context("count")?.get(0)?)
     }
@@ -946,7 +988,12 @@ impl Store {
         Ok(())
     }
 
-    pub async fn contacts(&self, account_id: i64, q: Option<&str>, limit: i64) -> Result<Vec<serde_json::Value>> {
+    pub async fn contacts(
+        &self,
+        account_id: i64,
+        q: Option<&str>,
+        limit: i64,
+    ) -> Result<Vec<Contact>> {
         let like = format!("%{}%", q.unwrap_or(""));
         let mut rows = self
             .conn
@@ -964,20 +1011,20 @@ impl Store {
                 .iter()
                 .max_by_key(|(_, c)| **c)
                 .map(|(n, _)| n.clone());
-            out.push(serde_json::json!({
-                "email": r.get::<String>(0)?,
-                "display_name": display,
-                "names": names,
-                "org": r.get::<Option<String>>(2)?,
-                "is_role": r.get::<i64>(3)? != 0,
-                "msg_count": r.get::<i64>(4)?,
-                "last_seen": r.get::<i64>(5)?,
-            }));
+            out.push(Contact {
+                email: r.get(0)?,
+                display_name: display,
+                names,
+                org: r.get(2)?,
+                is_role: r.get::<i64>(3)? != 0,
+                msg_count: r.get(4)?,
+                last_seen: r.get(5)?,
+            });
         }
         Ok(out)
     }
 
-    pub async fn orgs(&self, account_id: i64, limit: i64) -> Result<Vec<serde_json::Value>> {
+    pub async fn orgs(&self, account_id: i64, limit: i64) -> Result<Vec<OrgSummary>> {
         let mut rows = self
             .conn
             .query(
@@ -989,11 +1036,11 @@ impl Store {
             .await?;
         let mut out = Vec::new();
         while let Some(r) = rows.next().await? {
-            out.push(serde_json::json!({
-                "org": r.get::<String>(0)?,
-                "contact_count": r.get::<i64>(1)?,
-                "msg_count": r.get::<i64>(2)?,
-            }));
+            out.push(OrgSummary {
+                org: r.get(0)?,
+                contact_count: r.get(1)?,
+                msg_count: r.get(2)?,
+            });
         }
         Ok(out)
     }
@@ -1058,7 +1105,7 @@ impl Store {
         Ok(group)
     }
 
-    pub async fn merge_ops(&self, account_id: i64) -> Result<Vec<serde_json::Value>> {
+    pub async fn merge_ops(&self, account_id: i64) -> Result<Vec<MergeOperation>> {
         let mut rows = self
             .conn
             .query(
@@ -1068,12 +1115,12 @@ impl Store {
             .await?;
         let mut out = Vec::new();
         while let Some(r) = rows.next().await? {
-            out.push(serde_json::json!({
-                "op": r.get::<String>(0)?,
-                "a": r.get::<String>(1)?,
-                "b": r.get::<String>(2)?,
-                "at": r.get::<i64>(3)?,
-            }));
+            out.push(MergeOperation {
+                op: r.get(0)?,
+                a: r.get(1)?,
+                b: r.get(2)?,
+                at: r.get(3)?,
+            });
         }
         Ok(out)
     }
@@ -1090,7 +1137,7 @@ impl Store {
         Ok(())
     }
 
-    pub async fn image_allowances(&self, account_id: i64) -> Result<Vec<serde_json::Value>> {
+    pub async fn image_allowances(&self, account_id: i64) -> Result<Vec<ImageAllowance>> {
         let mut rows = self
             .conn
             .query(
@@ -1100,10 +1147,10 @@ impl Store {
             .await?;
         let mut out = Vec::new();
         while let Some(r) = rows.next().await? {
-            out.push(serde_json::json!({
-                "sender": r.get::<String>(0)?,
-                "at": r.get::<i64>(1)?,
-            }));
+            out.push(ImageAllowance {
+                sender: r.get(0)?,
+                at: r.get(1)?,
+            });
         }
         Ok(out)
     }
@@ -1120,7 +1167,10 @@ impl Store {
 
     pub async fn rename_account(&self, id: i64, name: &str) -> Result<()> {
         self.conn
-            .execute("UPDATE accounts SET name = ? WHERE id = ?", params![name, id])
+            .execute(
+                "UPDATE accounts SET name = ? WHERE id = ?",
+                params![name, id],
+            )
             .await?;
         Ok(())
     }
@@ -1142,7 +1192,10 @@ impl Store {
     pub async fn message_ids(&self, account_id: i64) -> Result<Vec<i64>> {
         let mut rows = self
             .conn
-            .query("SELECT id FROM messages WHERE account_id = ?", params![account_id])
+            .query(
+                "SELECT id FROM messages WHERE account_id = ?",
+                params![account_id],
+            )
             .await?;
         let mut out = Vec::new();
         while let Some(r) = rows.next().await? {

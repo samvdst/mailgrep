@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Layer 1: what the source gave us, never corrected.
 /// Text-first fetch means we hold headers + text part entities, plus
@@ -54,7 +55,8 @@ impl AttachMeta {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct Addr {
     pub email: Option<String>,
     pub name: Option<String>,
