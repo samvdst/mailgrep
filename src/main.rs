@@ -75,7 +75,7 @@ async fn main() -> Result<()> {
     }
 
     let spa = ServeDir::new(&web_dir)
-        .not_found_service(ServeFile::new(PathBuf::from(&web_dir).join("index.html")));
+        .fallback(ServeFile::new(PathBuf::from(&web_dir).join("index.html")));
     let router: Router = api::router(app).fallback_service(spa);
 
     tracing::info!("mailgrep listening on {bind}, data in {data_dir:?}");

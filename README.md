@@ -157,16 +157,18 @@ known-answer queries, so tuning is empirical rather than vibes.
 ## Development
 
 ```sh
-cargo test                              # normaliser + parser units, API-over-fixtures integration
-(cd web && npm install && npm run build)  # TypeScript SPA (esbuild, no framework)
-cargo run                               # API + SPA on :8025
+cargo test                              # tests + Rust → TypeScript API contracts
+(cd web && npm install && npm run build) # React production build
+(cd web && npm run dev)                  # Vite dev server; proxies /api to :8025
+cargo run                               # API + built SPA on :8025
 ```
 
 The test seams are deliberate: almost everything is asserted through the HTTP
 API against a committed corpus of adversarial `.eml` fixtures
 (`fixtures/corpus/`), so internals are free to change. The normaliser and query
-parser are additionally table-tested as pure functions. The query AST types are
-exported to TypeScript via `ts-rs` (`cargo test` regenerates `bindings/`).
+parser are additionally table-tested as pure functions. API request/response and
+query AST types are exported to `web/src/generated/` via `ts-rs`; `cargo test`
+regenerates them and CI rejects stale bindings.
 
 
 ## Non-goals (v1)

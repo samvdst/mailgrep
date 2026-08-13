@@ -1,5 +1,6 @@
 //! JSON HTTP API. One screen, everything is a query.
 
+use crate::api_types::*;
 use crate::crypto::Crypto;
 use crate::index::{Indexes, SearchOptions};
 use crate::queryparse::{Clause, FilterField};
@@ -8,12 +9,11 @@ use crate::store::{Account, Store};
 use crate::sync::ProgressMap;
 use anyhow::{Context, Result};
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
-use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ pub struct ApiError(StatusCode, String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.0, Json(json!({ "error": self.1 }))).into_response()
+        (self.0, Json(ErrorResponse { error: self.1 })).into_response()
     }
 }
 
@@ -79,7 +79,10 @@ pub fn router(app: SharedApp) -> Router {
         .route("/api/status", get(status))
         .route("/api/accounts", get(list_accounts).post(add_account))
         .route("/api/accounts/{id}", delete(remove_account))
-        .route("/api/accounts/{id}/folders", get(account_folders).put(set_folders))
+        .route(
+            "/api/accounts/{id}/folders",
+            get(account_folders).put(set_folders),
+        )
         .route("/api/accounts/{id}/sync", post(trigger_sync))
         .route("/api/accounts/{id}/rebuild", post(rebuild))
         .route("/api/accounts/{id}/interval", post(set_interval))
@@ -106,70 +109,52 @@ pub fn router(app: SharedApp) -> Router {
 
 // ---------- status ----------
 
-async fn status(State(app): State<SharedApp>) -> ApiResult<Json<Value>> {
+async fn status(State(app): State<SharedApp>) -> ApiResult<Json<StatusResponse>> {
     let accounts = app.store.accounts().await?;
     let progress = app.progress.lock().unwrap().clone();
     let mut out = Vec::new();
-    for a in &accounts {
+    for a in accounts {
         let count = app.store.message_count(a.id).await?;
         let logs = app.store.sync_logs(a.id, 5).await?;
-        out.push(json!({
-            "id": a.id,
-            "name": a.name,
-            "kind": a.kind,
-            "host": a.host,
-            "username": a.username,
-            "message_count": count,
-            "index_size_bytes": app.indexes.index_size_bytes(a.id),
-            "last_sync_at": a.last_sync_at,
-            "last_sync_status": a.last_sync_status,
-            "sync_interval_mins": a.sync_interval_mins,
-            "excluded_folders": a.excluded_folders,
-            "progress": progress.get(&a.id),
-            "recent_syncs": logs,
-        }));
+        out.push(StatusAccount {
+            id: a.id,
+            name: a.name,
+            kind: a.kind,
+            host: a.host,
+            username: a.username,
+            message_count: count,
+            index_size_bytes: app.indexes.index_size_bytes(a.id),
+            last_sync_at: a.last_sync_at,
+            last_sync_status: a.last_sync_status,
+            sync_interval_mins: a.sync_interval_mins,
+            excluded_folders: a.excluded_folders,
+            progress: progress.get(&a.id).cloned().map(Into::into),
+            recent_syncs: logs,
+        });
     }
-    Ok(Json(json!({ "accounts": out, "version": env!("CARGO_PKG_VERSION") })))
+    Ok(Json(StatusResponse {
+        accounts: out,
+        version: env!("CARGO_PKG_VERSION").into(),
+    }))
 }
 
 // ---------- accounts ----------
 
-async fn list_accounts(State(app): State<SharedApp>) -> ApiResult<Json<Value>> {
-    let accounts = app.store.accounts().await?;
-    Ok(Json(json!(accounts)))
-}
-
-#[derive(Deserialize)]
-struct NewAccount {
-    name: String,
-    #[serde(default)]
-    host: String,
-    #[serde(default = "default_port")]
-    port: u16,
-    #[serde(default)]
-    username: String,
-    #[serde(default)]
-    password: String,
-    /// "ssl" (implicit TLS, port 993) or "starttls" (port 143)
-    #[serde(default = "default_security")]
-    security: String,
-    /// fixture dir instead of imap
-    #[serde(default)]
-    fixture_dir: Option<String>,
-}
-
-fn default_port() -> u16 {
-    993
-}
-
-fn default_security() -> String {
-    "ssl".into()
+async fn list_accounts(State(app): State<SharedApp>) -> ApiResult<Json<Vec<AccountResponse>>> {
+    Ok(Json(
+        app.store
+            .accounts()
+            .await?
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+    ))
 }
 
 async fn add_account(
     State(app): State<SharedApp>,
     Json(body): Json<NewAccount>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<IdResponse>> {
     if let Some(dir) = &body.fixture_dir {
         if !std::path::Path::new(dir).is_dir() {
             return Err(bad("fixture_dir does not exist"));
@@ -178,7 +163,7 @@ async fn add_account(
             .store
             .add_account(&body.name, "fixture", dir, 0, "", &[], "ssl")
             .await?;
-        return Ok(Json(json!({ "id": id })));
+        return Ok(Json(IdResponse { id }));
     }
     if body.host.is_empty() || body.username.is_empty() || body.password.is_empty() {
         return Err(bad("host, username and password are required"));
@@ -218,134 +203,117 @@ async fn add_account(
             &body.security,
         )
         .await?;
-    Ok(Json(json!({ "id": id })))
+    Ok(Json(IdResponse { id }))
 }
 
 async fn remove_account(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<DeletedResponse>> {
     app.store.delete_account(id).await?;
     app.indexes.drop_account(id)?;
-    Ok(Json(json!({ "deleted": id })))
+    Ok(Json(DeletedResponse { deleted: id }))
 }
 
 async fn account_folders(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<FoldersResponse>> {
     let account = app.store.account(id).await?;
     let excluded = account.excluded_folders.clone();
     let crypto_ref = &app.crypto;
     let mut source = make_source(&account, crypto_ref).map_err(|e| bad(format!("{e:#}")))?;
-    let folders =
-        tokio::task::spawn_blocking(move || -> Result<Vec<String>> { source.folders() })
-            .await
-            .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
-    let out: Vec<Value> = folders
-        .iter()
-        .map(|f| {
-            json!({
-                "name": f,
-                "excluded": excluded.iter().any(|e| e.eq_ignore_ascii_case(f)),
+    let folders = tokio::task::spawn_blocking(move || -> Result<Vec<String>> { source.folders() })
+        .await
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))??;
+    Ok(Json(FoldersResponse {
+        folders: folders
+            .into_iter()
+            .map(|name| FolderInfo {
+                excluded: excluded.iter().any(|e| e.eq_ignore_ascii_case(&name)),
+                name,
             })
-        })
-        .collect();
-    Ok(Json(json!({ "folders": out })))
-}
-
-#[derive(Deserialize)]
-struct FolderExclusion {
-    excluded: Vec<String>,
+            .collect(),
+    }))
 }
 
 async fn set_folders(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
     Json(body): Json<FolderExclusion>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<OkResponse>> {
     app.store.set_excluded_folders(id, &body.excluded).await?;
-    Ok(Json(json!({ "ok": true })))
-}
-
-#[derive(Deserialize)]
-struct IntervalBody {
-    minutes: i64,
+    Ok(Json(OkResponse { ok: true }))
 }
 
 async fn set_interval(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
     Json(body): Json<IntervalBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<OkResponse>> {
     app.store.set_sync_interval(id, body.minutes.max(0)).await?;
-    Ok(Json(json!({ "ok": true })))
-}
-
-#[derive(Deserialize)]
-struct RenameBody {
-    name: String,
+    Ok(Json(OkResponse { ok: true }))
 }
 
 async fn rename_account(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
     Json(body): Json<RenameBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<OkResponse>> {
     let name = body.name.trim();
     if name.is_empty() {
         return Err(bad("name must not be empty"));
     }
     app.store.rename_account(id, name).await?;
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(OkResponse { ok: true }))
 }
 
 async fn list_image_allowances(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<Value>> {
-    let list = app.store.image_allowances(id).await?;
-    Ok(Json(json!({ "allowances": list })))
-}
-
-#[derive(Deserialize)]
-struct RevokeBody {
-    sender: String,
+) -> ApiResult<Json<ImageAllowancesResponse>> {
+    Ok(Json(ImageAllowancesResponse {
+        allowances: app.store.image_allowances(id).await?,
+    }))
 }
 
 async fn revoke_image_allowance(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
     Json(body): Json<RevokeBody>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<OkResponse>> {
     app.store.revoke_images(id, &body.sender).await?;
-    Ok(Json(json!({ "ok": true })))
-}
-
-#[derive(Deserialize)]
-struct SyncBody {
-    #[serde(default)]
-    max_per_folder: Option<usize>,
+    Ok(Json(OkResponse { ok: true }))
 }
 
 async fn trigger_sync(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
     body: Option<Json<SyncBody>>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<SyncStartedResponse>> {
     let max = body.and_then(|b| b.max_per_folder);
-    start_sync(app.clone(), id, max).await.map_err(|e| bad(format!("{e:#}")))?;
-    Ok(Json(json!({ "started": true })))
+    start_sync(app.clone(), id, max)
+        .await
+        .map_err(|e| bad(format!("{e:#}")))?;
+    Ok(Json(SyncStartedResponse { started: true }))
 }
 
 /// Spawn a sync for an account unless one is already running. The running
 /// flag is claimed atomically and ALWAYS released when the task ends,
 /// including on panic, so a failed sync can never wedge future syncs.
-pub async fn start_sync(app: SharedApp, account_id: i64, max_per_folder: Option<usize>) -> Result<()> {
+pub async fn start_sync(
+    app: SharedApp,
+    account_id: i64,
+    max_per_folder: Option<usize>,
+) -> Result<()> {
     let account = app.store.account(account_id).await?;
     {
         let mut progress = app.progress.lock().unwrap();
-        if progress.get(&account_id).map(|p| p.running).unwrap_or(false) {
+        if progress
+            .get(&account_id)
+            .map(|p| p.running)
+            .unwrap_or(false)
+        {
             anyhow::bail!("sync already running");
         }
         progress.insert(
@@ -401,49 +369,45 @@ pub async fn start_sync(app: SharedApp, account_id: i64, max_per_folder: Option<
     Ok(())
 }
 
-async fn rebuild(State(app): State<SharedApp>, Path(id): Path<i64>) -> ApiResult<Json<Value>> {
+async fn rebuild(
+    State(app): State<SharedApp>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<RebuildResponse>> {
     let count = crate::sync::rebuild_account(&app.store, &app.indexes, id).await?;
-    Ok(Json(json!({ "rebuilt": count })))
+    Ok(Json(RebuildResponse { rebuilt: count }))
 }
 
 // ---------- search ----------
 
-#[derive(Deserialize)]
-struct SearchParams {
-    #[serde(default)]
-    q: String,
-    /// account id, or "all"
-    #[serde(default)]
-    account: Option<String>,
-    #[serde(default)]
-    sort: Option<String>,
-    #[serde(default)]
-    limit: Option<usize>,
-    #[serde(default)]
-    offset: Option<usize>,
-}
-
 async fn search(
     State(app): State<SharedApp>,
     Query(p): Query<SearchParams>,
-) -> ApiResult<Json<Value>> {
-    let ast = crate::queryparse::parse(&p.q)
-        .map_err(|e| bad(format!("{e}")))?;
+) -> ApiResult<Json<SearchResponse>> {
+    let ast = crate::queryparse::parse(&p.q).map_err(|e| bad(format!("{e}")))?;
 
     // Expand contact: values through merge groups (query-time application of
     // user merges), per account.
     let accounts = app.store.accounts().await?;
     if accounts.is_empty() {
-        return Ok(Json(json!({
-            "results": [], "total": 0, "facets": empty_facets(), "accounts": []
-        })));
+        return Ok(Json(SearchResponse {
+            results: Vec::new(),
+            total: 0,
+            cross_account: false,
+            facets: FacetData::default(),
+            accounts: Vec::new(),
+        }));
     }
     let selected: Vec<&Account> = match p.account.as_deref() {
         None => vec![&accounts[0]],
         Some("all") => accounts.iter().collect(),
         Some(id) => {
             let id: i64 = id.parse().map_err(|_| bad("bad account id"))?;
-            vec![accounts.iter().find(|a| a.id == id).ok_or_else(|| not_found("no such account"))?]
+            vec![
+                accounts
+                    .iter()
+                    .find(|a| a.id == id)
+                    .ok_or_else(|| not_found("no such account"))?,
+            ]
         }
     };
 
@@ -458,7 +422,12 @@ async fn search(
     for account in &selected {
         let mut ast_x = ast.clone();
         for c in ast_x.clauses.iter_mut() {
-            if let Clause::Filter { field: FilterField::Contact, values, .. } = c {
+            if let Clause::Filter {
+                field: FilterField::Contact,
+                values,
+                ..
+            } = c
+            {
                 let mut expanded = Vec::new();
                 for v in values.iter() {
                     for e in app.store.merge_group(account.id, v).await? {
@@ -532,10 +501,7 @@ async fn search(
     }
     let mut thread_sizes: HashMap<(i64, String), i64> = HashMap::new();
     for (aid, _, _) in &rows {
-        let sizes = app
-            .store
-            .thread_sizes(*aid, &thread_ids)
-            .await?;
+        let sizes = app.store.thread_sizes(*aid, &thread_ids).await?;
         for (tid, n) in sizes {
             thread_sizes.insert((*aid, tid), n);
         }
@@ -543,26 +509,40 @@ async fn search(
 
     let mut results = Vec::new();
     for (aid, aname, hit) in &rows {
-        let Some(m) = msg_by_id.get(&hit.db_id) else { continue };
+        let Some(m) = msg_by_id.get(&hit.db_id) else {
+            continue;
+        };
         let locs = app.store.locations(m.id).await?;
-        results.push(json!({
-            "id": m.id,
-            "account_id": aid,
-            "account": aname,
-            "subject": if m.subject_norm.is_empty() { m.subject.clone() } else { m.subject_norm.clone() },
-            "subject_raw": m.subject,
-            "from": m.from,
-            "date": m.date_canonical,
-            "date_offset_mins": m.date_offset_mins,
-            "date_source": m.date_source,
-            "skew": m.skew,
-            "has_attach": m.has_attach,
-            "thread_id": m.thread_id,
-            "thread_size": thread_sizes.get(&(*aid, m.thread_id.clone())).copied().unwrap_or(1),
-            "folders": locs.iter().map(|l| l.folder.clone()).collect::<Vec<_>>(),
-            "snippet": hit.snippet,
-            "score": hit.score,
-        }));
+        results.push(SearchRow {
+            id: m.id,
+            account_id: *aid,
+            account: aname.clone(),
+            subject: if m.subject_norm.is_empty() {
+                m.subject.clone()
+            } else {
+                m.subject_norm.clone()
+            },
+            subject_raw: m.subject.clone(),
+            r#from: m.from.clone(),
+            date: m.date_canonical,
+            date_offset_mins: m.date_offset_mins,
+            date_source: m.date_source.clone(),
+            skew: m.skew,
+            has_attach: m.has_attach,
+            thread_id: m.thread_id.clone(),
+            thread_size: thread_sizes
+                .get(&(*aid, m.thread_id.clone()))
+                .copied()
+                .unwrap_or(1),
+            folders: locs.into_iter().map(|l| l.folder).collect(),
+            snippet: hit.snippet.clone(),
+            score: hit.score,
+        });
+    }
+
+    // Relevance scores are account-local, but dates are directly comparable.
+    if opts.sort_by_date {
+        results.sort_by(|a, b| b.date.cmp(&a.date));
     }
 
     // Facets over the top hits of every selected account.
@@ -573,24 +553,26 @@ async fn search(
     let facets = compute_facets(&app, &facet_ids).await?;
 
     let total: usize = per_account.iter().map(|(_, _, o)| o.total).sum();
-    Ok(Json(json!({
-        "results": results,
-        "total": total,
-        "cross_account": cross_account,
-        "facets": facets,
-        "accounts": selected.iter().map(|a| json!({"id": a.id, "name": a.name})).collect::<Vec<_>>(),
-    })))
-}
-
-fn empty_facets() -> Value {
-    json!({ "senders": [], "orgs": [], "years": [], "exts": [], "folders": [] })
+    Ok(Json(SearchResponse {
+        results,
+        total,
+        cross_account,
+        facets,
+        accounts: accounts
+            .iter()
+            .map(|a| SearchAccount {
+                id: a.id,
+                name: a.name.clone(),
+            })
+            .collect(),
+    }))
 }
 
 /// Facets computed over the (capped) top hits: top senders, top orgs, year
 /// histogram, attachment types, folders.
 /// ponytail: facet base is the top 2000 hits, not the full match set; switch
 /// to fast-field collection if that approximation ever misleads.
-async fn compute_facets(app: &SharedApp, ids: &[i64]) -> Result<Value> {
+async fn compute_facets(app: &SharedApp, ids: &[i64]) -> Result<FacetData> {
     let msgs = app.store.messages_by_ids(ids).await?;
     let mut senders: HashMap<String, (Option<String>, i64)> = HashMap::new();
     let mut orgs: HashMap<String, i64> = HashMap::new();
@@ -638,31 +620,36 @@ async fn compute_facets(app: &SharedApp, ids: &[i64]) -> Result<Value> {
         }
     }
 
-    let mut senders: Vec<Value> = senders
+    let mut senders: Vec<_> = senders
         .into_iter()
-        .map(|(email, (name, count))| json!({ "email": email, "name": name, "count": count }))
+        .map(|(email, (name, count))| SenderFacet { email, name, count })
         .collect();
-    senders.sort_by_key(|v| -v["count"].as_i64().unwrap_or(0));
+    senders.sort_by_key(|v| std::cmp::Reverse(v.count));
     senders.truncate(12);
-    let mut orgs: Vec<Value> = orgs
+    let mut orgs: Vec<_> = orgs
         .into_iter()
-        .map(|(org, count)| json!({ "org": org, "count": count }))
+        .map(|(org, count)| OrgFacet { org, count })
         .collect();
-    orgs.sort_by_key(|v| -v["count"].as_i64().unwrap_or(0));
+    orgs.sort_by_key(|v| std::cmp::Reverse(v.count));
     orgs.truncate(12);
-    let mut years: Vec<Value> = years
+    let mut years: Vec<_> = years
         .into_iter()
-        .map(|(y, c)| json!({ "year": y, "count": c }))
+        .map(|(year, count)| YearFacet { year, count })
         .collect();
-    years.sort_by_key(|v| v["year"].as_i64().unwrap_or(0));
-    let mut exts: Vec<Value> = exts
+    years.sort_by_key(|v| v.year);
+    let mut exts: Vec<_> = exts
         .into_iter()
-        .map(|(e, c)| json!({ "ext": e, "count": c }))
+        .map(|(ext, count)| ExtFacet { ext, count })
         .collect();
-    exts.sort_by_key(|v| -v["count"].as_i64().unwrap_or(0));
+    exts.sort_by_key(|v| std::cmp::Reverse(v.count));
     exts.truncate(12);
 
-    Ok(json!({ "senders": senders, "orgs": orgs, "years": years, "exts": exts }))
+    Ok(FacetData {
+        senders,
+        orgs,
+        years,
+        exts,
+    })
 }
 
 // ---------- message views ----------
@@ -670,56 +657,72 @@ async fn compute_facets(app: &SharedApp, ids: &[i64]) -> Result<Value> {
 async fn message_detail(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<Value>> {
-    let m = app.store.message(id).await?.ok_or_else(|| not_found("no such message"))?;
+) -> ApiResult<Json<MessageDetail>> {
+    let m = app
+        .store
+        .message(id)
+        .await?
+        .ok_or_else(|| not_found("no such message"))?;
     let parts = app.store.parts(id).await?;
     let locs = app.store.locations(id).await?;
-    let thread = app.store.thread_messages(m.account_id, &m.thread_id).await?;
-    let sender = m.from.first().and_then(|a| a.email.clone()).unwrap_or_default();
+    let thread = app
+        .store
+        .thread_messages(m.account_id, &m.thread_id)
+        .await?;
+    let sender = m
+        .from
+        .first()
+        .and_then(|a| a.email.clone())
+        .unwrap_or_default();
     let images_allowed = app.store.images_allowed(m.account_id, &sender).await?;
-    let attachments: Vec<Value> = parts
-        .iter()
+    let fresh_text = m.fresh_text();
+    let attachments = parts
+        .into_iter()
         .filter(|p| p.kind == "attach")
-        .map(|p| {
-            json!({
-                "path": p.path,
-                "filename": p.filename,
-                "mime": p.mime,
-                "size": p.size,
-                "content_id": p.content_id,
-                "inline": p.inline,
-            })
+        .map(|p| Attachment {
+            path: p.path,
+            filename: p.filename,
+            mime: p.mime,
+            size: p.size,
+            content_id: p.content_id,
+            inline: p.inline,
         })
         .collect();
-    Ok(Json(json!({
-        "id": m.id,
-        "account_id": m.account_id,
-        "identity": m.identity,
-        "msgid": m.msgid,
-        "subject": m.subject,
-        "subject_norm": m.subject_norm,
-        "from": m.from,
-        "to": m.to,
-        "cc": m.cc,
-        "dates": {
-            "canonical": m.date_canonical,
-            "source": m.date_source,
-            "offset_mins": m.date_offset_mins,
-            "received_top": m.received_top,
-            "date_header": m.date_hdr,
-            "internaldate": m.internaldate,
-            "skew": m.skew,
+    Ok(Json(MessageDetail {
+        id: m.id,
+        account_id: m.account_id,
+        identity: m.identity,
+        msgid: m.msgid,
+        subject: m.subject,
+        subject_norm: m.subject_norm,
+        r#from: m.from,
+        to: m.to,
+        cc: m.cc,
+        dates: MessageDates {
+            canonical: m.date_canonical,
+            source: m.date_source,
+            offset_mins: m.date_offset_mins,
+            received_top: m.received_top,
+            date_header: m.date_hdr,
+            internaldate: m.internaldate,
+            skew: m.skew,
         },
-        "thread_id": m.thread_id,
-        "thread_size": thread.len(),
-        "references": m.references,
-        "body_text": m.body_text,
-        "fresh_text": m.fresh_text(),
-        "has_html": m.has_html,
-        "attachments": attachments,
-        "folders": locs.iter().map(|l| json!({"folder": l.folder, "uid": l.uid})).collect::<Vec<_>>(),
-        "images_allowed": images_allowed,
-    })))
+        thread_id: m.thread_id,
+        thread_size: thread.len(),
+        references: m.references,
+        body_text: m.body_text,
+        fresh_text,
+        has_html: m.has_html,
+        attachments,
+        folders: locs
+            .into_iter()
+            .map(|l| MessageFolder {
+                folder: l.folder,
+                uid: l.uid,
+            })
+            .collect(),
+        images_allowed,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -733,13 +736,23 @@ async fn message_html(
     Path(id): Path<i64>,
     Query(p): Query<HtmlParams>,
 ) -> ApiResult<Response> {
-    let m = app.store.message(id).await?.ok_or_else(|| not_found("no such message"))?;
+    let m = app
+        .store
+        .message(id)
+        .await?
+        .ok_or_else(|| not_found("no such message"))?;
     let parts = app.store.parts(id).await?;
-    let sender = m.from.first().and_then(|a| a.email.clone()).unwrap_or_default();
+    let sender = m
+        .from
+        .first()
+        .and_then(|a| a.email.clone())
+        .unwrap_or_default();
     let allowed = p.images == Some(1) || app.store.images_allowed(m.account_id, &sender).await?;
 
     // choose html text part if present, else render plain text preformatted
-    let html_part = parts.iter().find(|p| p.kind == "text" && p.mime.contains("html"));
+    let html_part = parts
+        .iter()
+        .find(|p| p.kind == "text" && p.mime.contains("html"));
     let body_html = match html_part {
         Some(part) => {
             let entity = app
@@ -783,10 +796,17 @@ async fn message_html(
 }
 
 fn askama_escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
-fn sanitize_html(html: &str, msg_id: i64, cid_map: &HashMap<String, String>, allow_remote: bool) -> String {
+fn sanitize_html(
+    html: &str,
+    msg_id: i64,
+    cid_map: &HashMap<String, String>,
+    allow_remote: bool,
+) -> String {
     use ammonia::Builder;
     let mut b = Builder::default();
     b.add_tags(["img"])
@@ -839,11 +859,7 @@ async fn message_raw(State(app): State<SharedApp>, Path(id): Path<i64>) -> ApiRe
             .as_bytes(),
         );
     }
-    Ok((
-        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        out,
-    )
-        .into_response())
+    Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], out).into_response())
 }
 
 /// Attachment / part bytes, fetched live from the source. Verifies the
@@ -852,7 +868,11 @@ async fn message_part(
     State(app): State<SharedApp>,
     Path((id, path)): Path<(i64, String)>,
 ) -> ApiResult<Response> {
-    let m = app.store.message(id).await?.ok_or_else(|| not_found("no such message"))?;
+    let m = app
+        .store
+        .message(id)
+        .await?
+        .ok_or_else(|| not_found("no such message"))?;
     let parts = app.store.parts(id).await?;
     let part = parts
         .iter()
@@ -870,36 +890,41 @@ async fn message_part(
     let locs = app.store.locations(id).await?;
     let msgid = m.msgid.clone();
     let mime = part.mime.clone();
-    let filename = part.filename.clone().unwrap_or_else(|| format!("part-{path}"));
+    let filename = part
+        .filename
+        .clone()
+        .unwrap_or_else(|| format!("part-{path}"));
     let app2 = app.clone();
     let crypto_ref = &app.crypto;
     let mut source = make_source(&account, crypto_ref).map_err(|e| bad(format!("{e:#}")))?;
     let path2 = path.clone();
 
-    let fetch = tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Option<(String, u32, u32)>)> {
-        // last-known locations first
-        for loc in &locs {
-            if let Ok(bytes) = source.fetch_part(&loc.folder, loc.uid, &path2) {
-                if !bytes.is_empty() {
-                    return Ok((bytes, None));
+    let fetch =
+        tokio::task::spawn_blocking(move || -> Result<(Vec<u8>, Option<(String, u32, u32)>)> {
+            // last-known locations first
+            for loc in &locs {
+                if let Ok(bytes) = source.fetch_part(&loc.folder, loc.uid, &path2) {
+                    if !bytes.is_empty() {
+                        return Ok((bytes, None));
+                    }
                 }
             }
-        }
-        // relocate via Message-ID search
-        if let Some(msgid) = &msgid {
-            if let Some((folder, uid, uidvalidity)) = source.locate(msgid)? {
-                let bytes = source.fetch_part(&folder, uid, &path2)?;
-                return Ok((bytes, Some((folder, uid, uidvalidity))));
+            // relocate via Message-ID search
+            if let Some(msgid) = &msgid {
+                if let Some((folder, uid, uidvalidity)) = source.locate(msgid)? {
+                    let bytes = source.fetch_part(&folder, uid, &path2)?;
+                    return Ok((bytes, Some((folder, uid, uidvalidity))));
+                }
             }
-        }
-        anyhow::bail!(
-            "message no longer on the server at any known location; check your mail client"
-        )
-    })
-    .await
-    .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            anyhow::bail!(
+                "message no longer on the server at any known location; check your mail client"
+            )
+        })
+        .await
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let (bytes, relocated) = fetch.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
+    let (bytes, relocated) =
+        fetch.map_err(|e| ApiError(StatusCode::BAD_GATEWAY, format!("{e:#}")))?;
     if let Some((folder, uid, uidvalidity)) = relocated {
         app2.store
             .update_location(
@@ -943,99 +968,102 @@ async fn message_cid(
 async fn allow_images(
     State(app): State<SharedApp>,
     Path(id): Path<i64>,
-) -> ApiResult<Json<Value>> {
-    let m = app.store.message(id).await?.ok_or_else(|| not_found("no such message"))?;
+) -> ApiResult<Json<ImagesAllowedResponse>> {
+    let m = app
+        .store
+        .message(id)
+        .await?
+        .ok_or_else(|| not_found("no such message"))?;
     let sender = m
         .from
         .first()
         .and_then(|a| a.email.clone())
         .ok_or_else(|| bad("message has no sender"))?;
     app.store.allow_images(m.account_id, &sender).await?;
-    Ok(Json(json!({ "allowed": sender })))
+    Ok(Json(ImagesAllowedResponse { allowed: sender }))
 }
 
 async fn thread_view(
     State(app): State<SharedApp>,
     Path((account, tid)): Path<(i64, String)>,
-) -> ApiResult<Json<Value>> {
+) -> ApiResult<Json<ThreadResponse>> {
     let msgs = app.store.thread_messages(account, &tid).await?;
-    let out: Vec<Value> = msgs
-        .iter()
+    let subject = msgs
+        .first()
+        .map(|m| m.subject_norm.clone())
+        .unwrap_or_default();
+    let messages = msgs
+        .into_iter()
         .map(|m| {
-            json!({
-                "id": m.id,
-                "subject": m.subject,
-                "from": m.from,
-                "date": m.date_canonical,
-                "date_source": m.date_source,
-                "skew": m.skew,
-                "snippet": m.fresh_text().chars().take(200).collect::<String>(),
-            })
+            let snippet = m.fresh_text().chars().take(200).collect();
+            ThreadMessage {
+                id: m.id,
+                subject: m.subject,
+                r#from: m.from,
+                date: m.date_canonical,
+                date_source: m.date_source,
+                skew: m.skew,
+                snippet,
+            }
         })
         .collect();
-    let subject = msgs.first().map(|m| m.subject_norm.clone()).unwrap_or_default();
-    Ok(Json(json!({ "thread_id": tid, "subject": subject, "messages": out })))
+    Ok(Json(ThreadResponse {
+        thread_id: tid,
+        subject,
+        messages,
+    }))
 }
 
 // ---------- contacts / orgs / merges ----------
 
-#[derive(Deserialize)]
-struct ContactParams {
-    account: i64,
-    #[serde(default)]
-    q: Option<String>,
-    #[serde(default)]
-    limit: Option<i64>,
-}
-
 async fn contacts(
     State(app): State<SharedApp>,
     Query(p): Query<ContactParams>,
-) -> ApiResult<Json<Value>> {
-    let list = app
-        .store
-        .contacts(p.account, p.q.as_deref(), p.limit.unwrap_or(100))
+) -> ApiResult<Json<ContactsResponse>> {
+    Ok(Json(ContactsResponse {
+        contacts: app
+            .store
+            .contacts(p.account, p.q.as_deref(), p.limit.unwrap_or(100))
+            .await?,
+    }))
+}
+
+async fn orgs(
+    State(app): State<SharedApp>,
+    Query(p): Query<OrgParams>,
+) -> ApiResult<Json<OrgsResponse>> {
+    Ok(Json(OrgsResponse {
+        orgs: app.store.orgs(p.account, p.limit.unwrap_or(100)).await?,
+    }))
+}
+
+async fn merge(
+    State(app): State<SharedApp>,
+    Json(b): Json<MergeBody>,
+) -> ApiResult<Json<MergeGroupResponse>> {
+    app.store
+        .add_merge_op(b.account, "merge", &b.a, &b.b)
         .await?;
-    Ok(Json(json!({ "contacts": list })))
-}
-
-#[derive(Deserialize)]
-struct OrgParams {
-    account: i64,
-    #[serde(default)]
-    limit: Option<i64>,
-}
-
-async fn orgs(State(app): State<SharedApp>, Query(p): Query<OrgParams>) -> ApiResult<Json<Value>> {
-    let list = app.store.orgs(p.account, p.limit.unwrap_or(100)).await?;
-    Ok(Json(json!({ "orgs": list })))
-}
-
-#[derive(Deserialize)]
-struct MergeBody {
-    account: i64,
-    a: String,
-    b: String,
-}
-
-async fn merge(State(app): State<SharedApp>, Json(b): Json<MergeBody>) -> ApiResult<Json<Value>> {
-    app.store.add_merge_op(b.account, "merge", &b.a, &b.b).await?;
     let group = app.store.merge_group(b.account, &b.a).await?;
-    Ok(Json(json!({ "group": group })))
+    Ok(Json(MergeGroupResponse { group }))
 }
 
-async fn unmerge(State(app): State<SharedApp>, Json(b): Json<MergeBody>) -> ApiResult<Json<Value>> {
-    app.store.add_merge_op(b.account, "unmerge", &b.a, &b.b).await?;
+async fn unmerge(
+    State(app): State<SharedApp>,
+    Json(b): Json<MergeBody>,
+) -> ApiResult<Json<MergeGroupResponse>> {
+    app.store
+        .add_merge_op(b.account, "unmerge", &b.a, &b.b)
+        .await?;
     let group = app.store.merge_group(b.account, &b.a).await?;
-    Ok(Json(json!({ "group": group })))
+    Ok(Json(MergeGroupResponse { group }))
 }
 
-#[derive(Deserialize)]
-struct MergesParams {
-    account: i64,
-}
-
-async fn merges(State(app): State<SharedApp>, Query(p): Query<MergesParams>) -> ApiResult<Json<Value>> {
-    let ops = app.store.merge_ops(p.account).await?;
-    Ok(Json(json!({ "ops": ops })))
+async fn merges(
+    State(app): State<SharedApp>,
+    Query(p): Query<MergesParams>,
+) -> ApiResult<Json<MergesResponse>> {
+    Ok(Json(MergesResponse {
+        ops: app.store.merge_ops(p.account).await?,
+    }))
 }

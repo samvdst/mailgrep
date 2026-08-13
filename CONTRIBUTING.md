@@ -17,9 +17,10 @@ Thanks for your interest! A few things worth knowing before you start.
 ## Development
 
 ```sh
-cargo test                                 # full suite, < 5 s
-(cd web && npm install && npm run build)   # SPA
-cargo run                                  # serves on :8025
+cargo test                                 # suite + generated TypeScript contracts
+(cd web && npm install && npm run build)   # React SPA
+(cd web && npm run dev)                    # Vite UI with /api proxy
+cargo run                                  # serves built UI on :8025
 ```
 
 Add a fixture account pointing at `fixtures/corpus/` to get test data into

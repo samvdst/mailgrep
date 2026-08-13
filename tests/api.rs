@@ -449,6 +449,48 @@ async fn full_corpus_behaviour() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn date_sort_is_global_across_accounts() {
+    let t = setup().await;
+    let older = t._tmp.path().join("older");
+    std::fs::create_dir_all(older.join("INBOX")).unwrap();
+    std::fs::copy(
+        t.corpus.join("INBOX/001-boiler-root.eml"),
+        older.join("INBOX/old.eml"),
+    )
+    .unwrap();
+
+    let (_, body) = req(
+        &t.router,
+        "POST",
+        "/api/accounts",
+        Some(serde_json::json!({
+            "name": "older",
+            "fixture_dir": older.to_str().unwrap(),
+        })),
+    )
+    .await;
+    sync_account(&t.app, body["id"].as_i64().unwrap(), None).await;
+
+    let (_, body) = req(
+        &t.router,
+        "GET",
+        "/api/search?account=all&sort=date&limit=50",
+        None,
+    )
+    .await;
+    let dates: Vec<i64> = body["results"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|result| result["date"].as_i64().unwrap())
+        .collect();
+    assert!(
+        dates.windows(2).all(|pair| pair[0] >= pair[1]),
+        "cross-account date results are not globally sorted: {dates:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn bounded_subset_and_account_removal() {
     let tmp = tempfile::tempdir().unwrap();
     let corpus = tmp.path().join("corpus");
