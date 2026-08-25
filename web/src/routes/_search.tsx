@@ -81,12 +81,19 @@ function SearchShell() {
   const [draft, setDraft] = useState(q);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchRef = useRef<HTMLInputElement>(null);
+  const submittedQuery = useRef(q);
 
-  useEffect(() => setDraft(q), [q]);
+  useEffect(() => {
+    if (q !== submittedQuery.current) setDraft(q);
+    submittedQuery.current = q;
+  }, [q]);
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const next = draft.trim();
-      if (next !== q) void navigate({ search: (old) => ({ ...old, q: next || undefined }), replace: true });
+      if (next !== q) {
+        submittedQuery.current = next;
+        void navigate({ search: (old) => ({ ...old, q: next || undefined }), replace: true });
+      }
     }, 180);
     return () => clearTimeout(timer);
   }, [draft, navigate, q]);
