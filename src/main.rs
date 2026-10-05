@@ -1,5 +1,5 @@
 use anyhow::Result;
-use mailgrep::{api, crypto, index, store};
+use mailgrep::{api, auth, crypto, index, store};
 use axum::Router;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -29,10 +29,16 @@ async fn main() -> Result<()> {
         }
     };
 
+    let auth = auth::Auth::from_env();
+    if auth.is_none() {
+        tracing::warn!("MAILGREP_PASSWORD not set: no login required, the network is the only protection");
+    }
+
     let app = Arc::new(api::App {
         store,
         indexes,
         crypto,
+        auth,
         progress: Default::default(),
     });
 

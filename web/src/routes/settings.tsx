@@ -10,6 +10,7 @@ import {
   Database,
   FolderCog,
   HardDrive,
+  LogOut,
   ImageOff,
   Inbox,
   LoaderCircle,
@@ -41,6 +42,7 @@ import type { RenameBody } from "@/generated/RenameBody";
 import type { RevokeBody } from "@/generated/RevokeBody";
 import type { MergeBody } from "@/generated/MergeBody";
 import { api, del, post, put } from "@/lib/api";
+import { authQuery } from "@/lib/auth";
 import { cn, formatBytes, formatLocalDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +67,8 @@ function SettingsPage() {
     ...statusQuery,
     refetchInterval: (query) => query.state.data?.accounts.some((account) => account.progress?.running) ? 2_000 : false,
   });
+  const auth = useQuery(authQuery);
+  const logout = () => void post("/api/logout").finally(() => location.assign("/"));
   const setTab = (next: SettingsTab) => void navigate({ search: next === "accounts" ? {} : { tab: next }, replace: true });
 
   useEffect(() => {
@@ -81,6 +85,7 @@ function SettingsPage() {
           <div className="h-5 w-px bg-border" />
           <div className="flex min-w-0 items-center gap-2"><span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground"><Inbox className="size-4" /></span><strong className="truncate font-mono text-sm">mailgrep settings</strong></div>
           {status.data && <Badge variant="outline" className="ml-auto">v{status.data.version}</Badge>}
+          {auth.data?.required && <Button variant="ghost" size="sm" className={status.data ? "" : "ml-auto"} onClick={logout}><LogOut />Sign out</Button>}
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-4 py-6 sm:py-10">

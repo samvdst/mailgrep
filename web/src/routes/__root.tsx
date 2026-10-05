@@ -1,8 +1,10 @@
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
-import type { QueryClient } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Login } from "@/components/login";
+import { authQuery } from "@/lib/auth";
 import { useUiStore } from "@/store/ui";
 
 export type RouterContext = { queryClient: QueryClient };
@@ -23,6 +25,7 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 
 function Root() {
   const theme = useUiStore((state) => state.theme);
+  const auth = useQuery(authQuery);
 
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -32,5 +35,7 @@ function Root() {
     return () => media.removeEventListener("change", apply);
   }, [theme]);
 
+  if (auth.isPending) return null;
+  if (auth.data?.required && !auth.data.authenticated) return <Login />;
   return <Outlet />;
 }

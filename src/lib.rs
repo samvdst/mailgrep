@@ -1,5 +1,6 @@
 pub mod api;
 pub mod api_types;
+pub mod auth;
 pub mod config;
 pub mod crypto;
 pub mod imapsource;

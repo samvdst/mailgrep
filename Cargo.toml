@@ -11,6 +11,7 @@ axum = "0.8.9"
 chacha20poly1305 = "0.11.0"
 chrono = "0.4.45"
 hex = "0.4.3"
+hmac = "0.13.0"
 imap = "2"
 imap-proto = "0.10"
 libsql = { version = "0.9.30", default-features = false, features = ["core"] }

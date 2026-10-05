@@ -40,9 +40,11 @@ the accumulated damage of clients that disagree about dates and folder names.
 
 ## Self-hosting (Docker)
 
-Requirements: Docker (or Podman) with compose, and an always-on box. mailgrep
-has **no authentication**; the network is the trust boundary. Run it on a
-private network (Tailscale, WireGuard, LAN) and never expose it publicly.
+Requirements: Docker (or Podman) with compose, and an always-on box. Set
+`MAILGREP_PASSWORD` to require a login; without it, the network is the only
+trust boundary. Either way, run it on a private network (Tailscale, WireGuard,
+LAN) and never expose it publicly: a single shared password is a second lock,
+not a public-internet login.
 
 ```sh
 mkdir mailgrep && cd mailgrep
@@ -51,6 +53,8 @@ curl -O https://raw.githubusercontent.com/samvdst/mailgrep/main/docker-compose.y
 # The key that encrypts your IMAP credentials at rest. Generate once and keep it:
 # losing it means re-entering your accounts.
 echo "MAILGREP_KEY=$(openssl rand -hex 32)" > .env
+# The login password (optional; omit to run without a login).
+echo "MAILGREP_PASSWORD=$(openssl rand -base64 18)" >> .env
 
 docker compose up -d      # pulls ghcr.io/samvdst/mailgrep
 ```
@@ -127,6 +131,7 @@ rather than pretending to a unified relevance.
 | Env var | Default | Purpose |
 |---|---|---|
 | `MAILGREP_KEY` | - | 64 hex chars; encrypts IMAP credentials at rest (required to add accounts) |
+| `MAILGREP_PASSWORD` | - | login password; unset means no login. Sessions last 30 days; changing it (or `MAILGREP_KEY`) signs everyone out |
 | `MAILGREP_DATA` | `/data` (image) | state directory |
 | `MAILGREP_BIND` | `0.0.0.0:8025` | listen address |
 | `MAILGREP_WEB` | `/app/web/dist` | SPA assets |
@@ -175,7 +180,7 @@ regenerates them and CI rejects stale bindings.
 
 No IMAP writes (skewed dates are flagged, never "repaired"), no OCR or
 attachment content indexing (use something like Paperless-ngx for that), no
-LLM query parsing, no auth (private network only), no real-time IDLE sync.
+LLM query parsing, no user accounts (one shared password at most), no real-time IDLE sync.
 Semantic search is designed for as a future separate mode: the tables exist,
 nothing is generated yet.
 
