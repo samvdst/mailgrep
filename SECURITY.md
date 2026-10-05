@@ -13,9 +13,11 @@ security problems before a fix is released.
 ## Design notes relevant to security
 
 - mailgrep is **read-only against IMAP**: it never writes to your mailbox.
-- v1 ships **without authentication**: the network is the trust boundary.
-  Run it only on a private network (Tailscale, WireGuard, LAN). Do not
-  expose it to the public internet.
+- Authentication is a single optional password (`MAILGREP_PASSWORD`); the
+  session is a stateless HMAC-signed `HttpOnly`, `SameSite=Strict` cookie.
+  Without it, the network is the only trust boundary. Either way, run it only
+  on a private network (Tailscale, WireGuard, LAN). Do not expose it to the
+  public internet.
 - IMAP credentials are encrypted at rest (XChaCha20-Poly1305) with a key
   supplied via `MAILGREP_KEY`, never stored beside the ciphertext.
 - Message HTML is sanitised server-side (ammonia) and rendered in a

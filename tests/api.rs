@@ -128,6 +128,7 @@ async fn setup() -> TestApp {
         store,
         indexes,
         crypto: None,
+        auth: None,
         progress: Default::default(),
     });
     let router = api::router(app.clone());
@@ -503,6 +504,7 @@ async fn bounded_subset_and_account_removal() {
         store,
         indexes: Indexes::new(data.join("index")),
         crypto: None,
+        auth: None,
         progress: Default::default(),
     });
     let router = api::router(app.clone());
@@ -532,4 +534,65 @@ async fn bounded_subset_and_account_removal() {
     assert_eq!(s, StatusCode::OK);
     let (_, body) = req(&router, "GET", "/api/status", None).await;
     assert_eq!(body["accounts"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn password_login_gates_the_api() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Store::open(tmp.path().join("db.sqlite").to_str().unwrap()).await.unwrap();
+    let app: SharedApp = Arc::new(App {
+        store,
+        indexes: Indexes::new(tmp.path().join("index")),
+        crypto: None,
+        auth: Some(mailgrep::auth::Auth::new("hunter2", b"key")),
+        progress: Default::default(),
+    });
+    let router = api::router(app);
+
+    let (s, body) = req(&router, "GET", "/api/auth", None).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body, serde_json::json!({"required": true, "authenticated": false}));
+    let (s, _) = req(&router, "GET", "/api/status", None).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+    let (s, _, _) = raw_req(&router, "/api/message/1/raw").await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    let (s, _) = req(&router, "POST", "/api/login", Some(serde_json::json!({"password": "nope"}))).await;
+    assert_eq!(s, StatusCode::UNAUTHORIZED);
+
+    let login = Request::builder()
+        .method("POST")
+        .uri("/api/login")
+        .header("content-type", "application/json")
+        .header("x-forwarded-proto", "https")
+        .body(Body::from(r#"{"password":"hunter2"}"#))
+        .unwrap();
+    let resp = router.clone().oneshot(login).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let set_cookie = resp.headers()["set-cookie"].to_str().unwrap().to_string();
+    assert!(set_cookie.contains("HttpOnly") && set_cookie.contains("Secure"), "{set_cookie}");
+    let cookie = set_cookie.split(';').next().unwrap().to_string();
+
+    let with_cookie = |uri: &str| {
+        Request::builder()
+            .uri(uri)
+            .header("cookie", format!("theme=dark; {cookie}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+    let resp = router.clone().oneshot(with_cookie("/api/status")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let resp = router.clone().oneshot(with_cookie("/api/auth")).await.unwrap();
+    let body: Value = serde_json::from_slice(&resp.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    assert_eq!(body["authenticated"], true);
+
+    let tampered = Request::builder()
+        .uri("/api/status")
+        .header("cookie", format!("{cookie}0"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(router.clone().oneshot(tampered).await.unwrap().status(), StatusCode::UNAUTHORIZED);
+
+    let (s, _) = req(&router, "POST", "/api/logout", None).await;
+    assert_eq!(s, StatusCode::OK);
 }

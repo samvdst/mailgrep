@@ -1,6 +1,7 @@
 //! JSON HTTP API. One screen, everything is a query.
 
 use crate::api_types::*;
+use crate::auth::{self, Auth};
 use crate::crypto::Crypto;
 use crate::index::{Indexes, SearchOptions};
 use crate::queryparse::{Clause, FilterField};
@@ -8,8 +9,9 @@ use crate::source::{FixtureSource, MailSource};
 use crate::store::{Account, Store};
 use crate::sync::ProgressMap;
 use anyhow::{Context, Result};
-use axum::extract::{Path, Query, State};
-use axum::http::{StatusCode, header};
+use axum::extract::{Path, Query, Request, State};
+use axum::http::{HeaderMap, StatusCode, header};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
@@ -21,6 +23,8 @@ pub struct App {
     pub store: Store,
     pub indexes: Indexes,
     pub crypto: Option<Crypto>,
+    /// `None` when no MAILGREP_PASSWORD is configured.
+    pub auth: Option<Auth>,
     pub progress: ProgressMap,
 }
 
@@ -75,7 +79,11 @@ pub fn make_source(account: &Account, crypto: &Option<Crypto>) -> Result<Box<dyn
 // ---------- router ----------
 
 pub fn router(app: SharedApp) -> Router {
-    Router::new()
+    let public = Router::new()
+        .route("/api/auth", get(auth_status))
+        .route("/api/login", post(login))
+        .route("/api/logout", post(logout));
+    let protected = Router::new()
         .route("/api/status", get(status))
         .route("/api/accounts", get(list_accounts).post(add_account))
         .route("/api/accounts/{id}", delete(remove_account))
@@ -104,7 +112,84 @@ pub fn router(app: SharedApp) -> Router {
         .route("/api/merge", post(merge))
         .route("/api/unmerge", post(unmerge))
         .route("/api/merges", get(merges))
-        .with_state(app)
+        .route_layer(middleware::from_fn_with_state(app.clone(), require_session));
+    public.merge(protected).with_state(app)
+}
+
+// ---------- auth ----------
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+fn session_cookie(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .find_map(|c| c.trim().strip_prefix(auth::COOKIE)?.strip_prefix('='))
+}
+
+fn authenticated(app: &App, headers: &HeaderMap) -> bool {
+    match &app.auth {
+        None => true,
+        Some(auth) => session_cookie(headers).is_some_and(|t| auth.verify(t, now_secs())),
+    }
+}
+
+async fn require_session(State(app): State<SharedApp>, request: Request, next: Next) -> Response {
+    if authenticated(&app, request.headers()) {
+        next.run(request).await
+    } else {
+        ApiError(StatusCode::UNAUTHORIZED, "login required".into()).into_response()
+    }
+}
+
+/// Set-Cookie value; `Secure` when the request came in over HTTPS via a proxy,
+/// so plain-HTTP access on a LAN still works.
+fn set_cookie(headers: &HeaderMap, value: &str, max_age: i64) -> String {
+    let https = headers
+        .get("x-forwarded-proto")
+        .is_some_and(|v| v.as_bytes().eq_ignore_ascii_case(b"https"));
+    format!(
+        "{}={value}; Path=/; Max-Age={max_age}; HttpOnly; SameSite=Strict{}",
+        auth::COOKIE,
+        if https { "; Secure" } else { "" }
+    )
+}
+
+async fn auth_status(State(app): State<SharedApp>, headers: HeaderMap) -> Json<AuthStatus> {
+    Json(AuthStatus {
+        required: app.auth.is_some(),
+        authenticated: authenticated(&app, &headers),
+    })
+}
+
+async fn login(
+    State(app): State<SharedApp>,
+    headers: HeaderMap,
+    Json(body): Json<LoginBody>,
+) -> ApiResult<Response> {
+    let Some(auth) = &app.auth else {
+        return Ok(Json(OkResponse { ok: true }).into_response());
+    };
+    let _serialised = auth.attempts.lock().await;
+    if !auth.check_password(&body.password) {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        tracing::warn!("failed login attempt");
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "wrong password".into()));
+    }
+    let cookie = set_cookie(&headers, &auth.issue(now_secs()), auth::SESSION_SECS);
+    Ok(([(header::SET_COOKIE, cookie)], Json(OkResponse { ok: true })).into_response())
+}
+
+async fn logout(headers: HeaderMap) -> Response {
+    let cookie = set_cookie(&headers, "", 0);
+    ([(header::SET_COOKIE, cookie)], Json(OkResponse { ok: true })).into_response()
 }
 
 // ---------- status ----------

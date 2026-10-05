@@ -14,6 +14,19 @@ pub struct ErrorResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct AuthStatus {
+    pub required: bool,
+    pub authenticated: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct LoginBody {
+    pub password: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct StatusResponse {
     pub accounts: Vec<StatusAccount>,
     pub version: String,

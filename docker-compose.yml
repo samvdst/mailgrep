@@ -11,6 +11,8 @@ services:
       # 64 hex chars; encrypts IMAP credentials at rest. Generate with:
       #   openssl rand -hex 32
       MAILGREP_KEY: "${MAILGREP_KEY:?set MAILGREP_KEY in .env}"
+      # login password; leave unset to run without a login
+      MAILGREP_PASSWORD: "${MAILGREP_PASSWORD:-}"
     volumes:
       - mailgrep-data:/data
 
